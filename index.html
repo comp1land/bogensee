@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Bogensee — Ausstellung</title>
+<style>
+  :root{
+    --bg: #0c0c0c;
+    --panel: #1b1b1b;
+    --panel-edge: #333333;
+    --ink: #ededed;
+    --ink-dim: #9c9c9c;
+    --accent: #e6e6e6;
+    --caption-bg: rgba(12, 12, 12, 0.92);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: "Courier New", Courier, monospace;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #backdrop {
+    position: fixed; inset: 0;
+    z-index: 0;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.045) 0, rgba(255,255,255,0.045) 1px, transparent 1px, transparent 140px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.045) 0, rgba(255,255,255,0.045) 1px, transparent 1px, transparent 140px);
+    pointer-events: none;
+  }
+
+  .tick {
+    position: fixed;
+    font-size: 24px;
+    letter-spacing: 0.02em;
+    color: rgba(156,156,156,0.4);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .tick.tl { top: 26px; left: 32px; }
+  .tick.bl { bottom: 26px; left: 32px; }
+  .tick.tr { top: 26px; right: 32px; }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    z-index: 2;
+  }
+
+  #canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 3840px;
+    height: 2160px;
+    transform-origin: 0 0;
+  }
+
+  .item {
+    position: absolute;
+    overflow: visible;
+  }
+
+  .item-inner {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tile-title {
+    flex-shrink: 0;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    font-size: 25px;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    background: var(--caption-bg);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-bottom: none;
+  }
+
+  /* ---------- the actual DIN-A / 5:4 framed image box ---------- */
+  .tile-frame {
+    position: relative;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: var(--panel);
+    outline: 1px solid rgba(255,255,255,0.16);
+    outline-offset: -1px;
+  }
+  .frame-img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  }
+  .frame-img.active { opacity: 1; }
+
+  /* ---------- expandable per-layer legend, top-left of a map frame ---------- */
+  .map-legend {
+    position: absolute;
+    top: 12px; left: 12px;
+    z-index: 6;
+    font-family: "Courier New", Courier, monospace;
+  }
+  .map-legend.no-legend { display: none; }
+  /* once zoomed in past the pin threshold, the legend is re-parented to
+     <body> (see applyTransform) and pinned to a fixed screen position —
+     exactly like the Reset button — instead of scrolling/zooming with
+     the map underneath it */
+  .map-legend.pinned {
+    position: fixed;
+    top: 50px; left: 50px;
+    z-index: 25;
+  }
+  .legend-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 18px;
+    background: #000;
+    border: 1px solid #000;
+    border-radius: 2px;
+    color: #fff;
+    font-family: "Courier New", Courier, monospace;
+    font-weight: bold;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    touch-action: manipulation;
+  }
+  .legend-toggle svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.4; flex-shrink: 0; transition: transform 0.2s ease; }
+  .map-legend.open .legend-toggle svg { transform: rotate(45deg); }
+  .legend-panel {
+    display: none;
+    margin-top: 6px;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
+  .map-legend.open .legend-panel { display: block; }
+  .legend-panel img {
+    display: block;
+    width: 390px;
+    height: auto;
+  }
+
+  .finance-btn {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    font-size: 17px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--panel-edge);
+    color: var(--ink-dim);
+    border-radius: 3px;
+    touch-action: manipulation;
+  }
+  .finance-btn.active {
+    color: var(--ink);
+    background: rgba(255,255,255,0.14);
+    border-color: var(--accent);
+  }
+
+  /* ---------- sequence controls: sits BELOW the frame, external ---------- */
+  .seq-controls {
+    flex-shrink: 0;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 0 26px;
+    background: var(--caption-bg);
+    border: 1px solid var(--panel-edge);
+  }
+
+  .seq-play-btn {
+    width: 52px; height: 52px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--panel-edge);
+    display: flex; align-items: center; justify-content: center;
+    touch-action: manipulation;
+  }
+  .seq-play-btn svg { width: 20px; height: 20px; fill: var(--ink); }
+
+  .seq-timeline {
+    position: relative;
+    flex: 1;
+    height: 100%;
+  }
+  .seq-line {
+    position: absolute;
+    left: 22px; right: 22px;
+    top: 38%;
+    height: 2px;
+    background: rgba(255,255,255,0.16);
+    transform: translateY(-50%);
+  }
+  .seq-point {
+    position: absolute;
+    top: 38%;
+    width: 22px; height: 22px;
+    margin-left: -11px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.14);
+    border: 1px solid var(--panel-edge);
+    transform: translateY(-50%);
+    touch-action: manipulation;
+  }
+  .seq-point.active { background: var(--accent); border-color: var(--accent); }
+  .seq-date {
+    position: absolute;
+    top: calc(38% + 20px);
+    transform: translateX(-50%);
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    color: var(--ink-dim);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .seq-date.active { color: var(--ink); }
+
+  /* ---------- compact overlay nav: plain triangles sitting just beside the frame ---------- */
+  .tile-frame.frame-overlaynav { overflow: visible; }
+  .nav-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0; height: 0;
+    border-top: 15px solid transparent;
+    border-bottom: 15px solid transparent;
+    z-index: 5;
+    touch-action: manipulation;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+  }
+  .nav-arrow.nav-prev {
+    left: -16px;
+    border-right: 20px solid var(--ink);
+  }
+  .nav-arrow.nav-next {
+    right: -16px;
+    border-left: 20px solid var(--ink);
+  }
+
+  /* ---------- map row: DIN-A/5:4 frame + tab column sitting OUTSIDE it ---------- */
+  .map-row {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .layer-tabs {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: #161616;
+    border: 1px solid var(--panel-edge);
+    border-left: none;
+  }
+  .layer-tab {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 4px 8px;
+    font-size: 24px;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    color: var(--ink-dim);
+    border-bottom: 1px solid var(--panel-edge);
+    border-left: 4px solid transparent;
+    touch-action: manipulation;
+  }
+  .layer-tab:last-child { border-bottom: none; }
+  .layer-tab.active {
+    color: var(--ink);
+    background: rgba(255,255,255,0.06);
+    border-left: 4px solid var(--accent);
+  }
+
+  /* "eco upgrade" is a normal tab like any other; its 2x2 sub-grid flies
+     out to the right, only while this tab is the active one */
+  .layer-tab.gap-before { margin-top: 40px; position: relative; }
+  .layer-tab.gap-before::before {
+    content: '';
+    position: absolute;
+    top: -20px; left: 14px; right: 14px;
+    border-top: 1px solid var(--panel-edge);
+  }
+
+  .layer-subgrid {
+    position: absolute;
+    top: 0; left: 100%;
+    height: 100%;
+    width: 240px;
+    display: none;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    background: #161616;
+    border: 1px solid var(--panel-edge);
+    border-left: none;
+    z-index: 50;
+    box-shadow: 20px 0 40px -10px rgba(0,0,0,0.7);
+  }
+  .layer-tab.active .layer-subgrid { display: grid; }
+  .layer-subgrid-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    color: var(--ink-dim);
+    border-right: 1px solid var(--panel-edge);
+    border-top: 1px solid var(--panel-edge);
+    touch-action: manipulation;
+  }
+  .layer-subgrid-cell:nth-child(2n) { border-right: none; }
+  .layer-subgrid-cell.active {
+    color: var(--ink);
+    background: rgba(255,255,255,0.1);
+  }
+
+  /* ---------- fixed reset button, unaffected by canvas zoom/pan ---------- */
+  .reset-btn {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    z-index: 20;
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: rgba(27,27,27,0.92);
+    border: 1px solid var(--panel-edge);
+    color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.5);
+    touch-action: manipulation;
+  }
+  .reset-btn svg { width: 20px; height: 20px; fill: none; stroke: var(--ink); stroke-width: 1.6; }
+  .reset-btn span {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  /* ---------- fixed nav button to the Methods+Biotopes view, top-left; same look as .reset-btn ---------- */
+  #methods-btn {
+    top: 68px; left: 32px;
+    bottom: auto; right: auto;
+  }
+
+  /* ---------- back button, top-left, inside the Methods+Biotopes view; same look as .reset-btn ---------- */
+  #back-btn {
+    top: 26px; left: 32px;
+    bottom: auto; right: auto;
+  }
+
+  /* ---------- Methods+Biotopes view: horizontally swipeable document ---------- */
+  #methods-view {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: var(--bg);
+  }
+  .hidden { display: none; }
+
+  #methods-stage {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  #doc-wrap {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+  #doc-wrap img {
+    display: block;
+    pointer-events: none;
+  }
+
+  /* ---------- section jump-nav, bottom-center, inside the Methods+Biotopes view ---------- */
+  #section-nav {
+    position: fixed;
+    bottom: 28px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    background: rgba(27,27,27,0.92);
+    border: 1px solid var(--panel-edge);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.5);
+  }
+  .section-btn {
+    font-family: "Courier New", Courier, monospace;
+    padding: 16px 26px;
+    font-size: 16px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--panel-edge);
+    touch-action: manipulation;
+  }
+  .section-btn:last-child { border-right: none; }
+  .section-btn.active {
+    color: var(--ink);
+    background: rgba(255,255,255,0.1);
+  }
+</style>
+</head>
+<body>
+
+<div id="site-view">
+
+<div id="backdrop"></div>
+<div class="tick tl">52.538503 N · 13.359849 E</div>
+<div class="tick tr">52.774927 N · 13.52574 E</div>
+<div class="tick bl">COMPENSATION LAB e.V.</div>
+<button id="methods-btn" class="reset-btn" type="button">
+  <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  <span>Methods</span>
+</button>
+
+<div id="stage">
+  <div id="canvas"><!-- items injected by JS from CONFIG --></div>
+</div>
+
+<button id="reset-btn" class="reset-btn" aria-label="Zur Ausgangsansicht">
+  <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 3v6h6"/></svg>
+  <span>Reset</span>
+</button>
+
+</div>
+
+<div id="methods-view" class="hidden">
+  <div id="methods-stage">
+    <div id="doc-wrap">
+      <img id="doc-img" src="methods.jpg" alt="Methods and Biotopes — Compensation Lab e.V.">
+    </div>
+  </div>
+
+  <button id="back-btn" class="reset-btn" type="button">
+    <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    <span>Places</span>
+  </button>
+
+  <button id="doc-reset-btn" class="reset-btn" aria-label="Zur Ausgangsansicht">
+    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 3v6h6"/></svg>
+    <span>Reset</span>
+  </button>
+
+  <div id="section-nav">
+    <button class="section-btn" type="button" data-x="1000">Organizing</button>
+    <button class="section-btn" type="button" data-x="3000">Creating</button>
+    <button class="section-btn" type="button" data-x="5000">Maintaining</button>
+    <button class="section-btn" type="button" data-x="7000">Monitoring</button>
+  </div>
+</div>
+
+<script>
+
+/* ============================================================
+   INHALT ANPASSEN
+
+   Zwei Kachel-Typen:
+
+   1) "sequence" — vier Bilder, per Zeitstrahl (ein Punkt pro Bild,
+      mit Datumstext darunter) einzeln anwählbar, plus Play-Button.
+      Titel-Balken und Zeitstrahl sitzen AUSSERHALB des eigentlichen
+      Bild-Rahmens, sodass der Rahmen selbst ein sauberes DIN-A-
+      Verhältnis behält.
+      images: ["bild1.jpg", ...] (4 Stück)
+      dates:  ["1990","2005","2015","2024"] (Text unter jedem Punkt)
+      finance: optional — Dateiname für eine zusätzliche "Finance"-
+               Ebene, per eigenem Button oben rechts im Rahmen
+               anwählbar (unabhängig vom Zeitstrahl)
+      ratio:  Breite/Höhe des Rahmens — 1.41421 für Querformat (Plan),
+              0.70711 für Hochformat (Bogensee plan/axo)
+      w:      Breite des Rahmens in Pixel (Höhe ergibt sich aus ratio)
+      x,y:    Position auf der Leinwand
+
+   2) "layered" — Karte mit Reitern, die AUSSERHALB des 5:4-Karten-
+      rahmens sitzen (rechte Spalte). Ein Eintrag kann statt einem
+      einfachen "src" ein "subGrid"-Array haben (6 Einträge, 2x3-
+      Raster) — das ist für "Eco Value": die Karte selbst hat ein
+      eigenes Bild UND sechs Unter-Karten, macht zusammen 7 Karten.
+      "gapBefore: true" fügt einen kleinen Abstand davor ein.
+      "legend: 'datei.jpg'" (optional, pro Layer) — zeigt oben links
+      im Kartenrahmen einen ausklappbaren "Legend"-Button; ohne
+      dieses Feld bleibt der Button für diesen Layer ausgeblendet.
+
+   3) "image" — ein einzelnes statisches Bild, nur Titel + Rahmen,
+      kein Zeitstrahl/keine Reiter (z.B. die kleinen "Verortung"-
+      Kacheln).
+      src: Dateiname
+      ratio, w, x, y: wie oben
+
+   4) "section" — Titelleiste + Rahmen; "src" (optional) zeigt ein
+      Bild darin an, ohne das Feld bleibt es ein leerer dunkler
+      Platzhalter-Rahmen.
+      src (optional), ratio, w, x, y: wie oben
+
+   Für Bildergalerien (mehrere Bilder, nur mit kleinen Pfeilen statt
+   Zeitstrahl durchklickbar — wie die alte "Präsentation"-Kachel):
+   "sequence" mit "overlayNav: true, noPlay: true" verwenden.
+
+   ============================================================ */
+
+const TITLE_H = 64, CTRL_GAP = 20, CTRL_H = 90, TABS_W = 230;
+const RATIO_LANDSCAPE = 1.41421, RATIO_PORTRAIT = 0.70711, RATIO_MAP = 1.25;
+const RATIO_AXO_LEA = 7441 / 9345;             // reale Rahmenmaße Axo Lea (Mettmannplatz)
+const RATIO_AXO_BOGENSEE = 9246 / 7987;        // reale Rahmenmaße Axo Bogensee
+
+const CONFIG = [
+
+  {
+    type: "sequence",
+    label: "Mettmannplatz axo",
+    images: ["lea-axo-1.jpg", "lea-axo-2.jpg", "lea-axo-3.jpg", "lea-axo-4.jpg"],
+    dates: ["spring", "summer", "autumn", "winter"],
+    ratio: RATIO_AXO_LEA, w: 510,
+    x: 500, y: 510
+  },
+  {
+    type: "image",
+    label: "overview Mettmannplatz",
+    src: "overview-mettmannplatz.jpg",
+    ratio: 1.6, w: 320,
+    x: 500, y: 1240
+  },
+  {
+    type: "sequence",
+    label: "Mettmannplatz plan",
+    images: ["lea-plan-1.jpg", "lea-plan-2.jpg", "lea-plan-3.jpg", "lea-plan-4.jpg", "lea-plan-5.jpg"],
+    dates: ["2026", "2032", "2037", "2042", "after 2052"],
+    finance: "lea-plan-finance.jpg",
+    ratio: RATIO_LANDSCAPE, w: 990,
+    x: 805, y: 1240
+  },
+  {
+    type: "layered",
+    label: "Map",
+    ratio: RATIO_MAP, w: 1235,
+    layers: [
+      { src: "typology.jpg", tab: "typology", legend: "typology_legend.jpg" },
+      { src: "analysis.jpg", tab: "analysis", legend: "analysis_legend.jpg" },
+      {
+        src: "eco.jpg",
+        tab: "ecological upgrade",
+        gapBefore: true,
+        legend: "eco_legend.jpg",
+        subGrid: [
+          { src: "eco1.jpg", tab: "I", legend: "eco1_legend.jpg" },
+          { src: "eco2.jpg", tab: "II", legend: "eco2_legend.jpg" },
+          { src: "eco3.jpg", tab: "III", legend: "eco3_legend.jpg" },
+          { src: "eco4.jpg", tab: "IV", legend: "eco4_legend.jpg" }
+        ]
+      },
+      { src: "weakness.jpg", tab: "weakness", legend: "weakness_legend.jpg" },
+      { src: "state.owned.jpg", tab: "state owned", legend: "state.owned_legend.jpg" }
+    ],
+    x: 1225, y: 185
+  },
+  {
+    type: "sequence",
+    label: "Axo bogensee",
+    images: ["bogensee-axo-1.jpg", "bogensee-axo-2.jpg", "bogensee-axo-3.jpg", "bogensee-axo-4.jpg"],
+    dates: ["spring", "summer", "autumn", "winter"],
+    ratio: RATIO_AXO_BOGENSEE, w: 815,
+    x: 1905, y: 1240
+  },
+  {
+    type: "sequence",
+    label: "Bogensee plan",
+    images: ["bogensee-plan-1.jpg", "bogensee-plan-2.jpg", "bogensee-plan-3.jpg", "bogensee-plan-4.jpg", "bogensee-plan-5.jpg"],
+    dates: ["2026", "2032", "2037", "2042", "after 2052"],
+    finance: "bogensee-plan-finance.jpg",
+    ratio: RATIO_PORTRAIT, w: 650,
+    x: 2645, y: 785
+  },
+  {
+    type: "image",
+    label: "overview Bogensee",
+    src: "overview-bogensee.jpg",
+    ratio: 1.6, w: 325,
+    x: 2645, y: 1750
+  },
+  {
+    type: "section",
+    label: "section Mettmannplatz",
+    src: "section-mettmannplatz.jpg",
+    ratio: 425/1189, w: 313,
+    x: 180, y: 679
+  },
+  {
+    type: "sequence",
+    label: "Mettmannplatz gallery",
+    overlayNav: true, noPlay: true,
+    images: [
+      "mettmannplatz-gallery-1.jpg", "mettmannplatz-gallery-2.jpg", "mettmannplatz-gallery-3.jpg",
+      "mettmannplatz-gallery-4.jpg", "mettmannplatz-gallery-5.jpg", "mettmannplatz-gallery-6.jpg",
+      "mettmannplatz-gallery-7.jpg", "mettmannplatz-gallery-8.jpg", "mettmannplatz-gallery-9.jpg",
+      "mettmannplatz-gallery-10.jpg"
+    ],
+    ratio: 1.77778, w: 477,
+    x: 370, y: 1510
+  },
+  {
+    type: "sequence",
+    label: "Bogensee gallery",
+    overlayNav: true, noPlay: true,
+    images: [
+      "bogensee-gallery-1.jpg", "bogensee-gallery-2.jpg", "bogensee-gallery-3.jpg",
+      "bogensee-gallery-4.jpg", "bogensee-gallery-5.jpg", "bogensee-gallery-6.jpg",
+      "bogensee-gallery-7.jpg", "bogensee-gallery-8.jpg", "bogensee-gallery-9.jpg",
+      "bogensee-gallery-10.jpg"
+    ],
+    ratio: 1.77778, w: 477,
+    x: 3115, y: 450
+  },
+  {
+    type: "section",
+    label: "section Bogensee",
+    src: "section-bogensee.jpg",
+    ratio: 425/1189, w: 313,
+    x: 3245, y: 785
+  }
+];
+
+/* ============================================================
+   Ab hier nichts mehr anpassen (Logik für Zoom/Pan/Play/Reiter)
+   ============================================================ */
+const CANVAS_W = 3840, CANVAS_H = 2160;
+// Zoom-out knob (kept at 1 — the permanent page-level `zoom` in the CSS above
+// now does the "smaller + pushed together" effect for the whole page).
+const SIZE_SCALE = 0.83;
+const canvas = document.getElementById('canvas');
+const stage = document.getElementById('stage');
+
+// Prevent the browser's own page-zoom (trackpad pinch / ctrl+scroll / Safari
+// gesture events) from engaging — otherwise it fights with our custom canvas
+// zoom and can visually detach "position: fixed" elements like the reset
+// button. Instead, we redirect trackpad pinch into our own canvas zoom, so
+// testing on a laptop trackpad behaves the same as pinching on the real
+// touchscreen.
+function zoomAt(clientX, clientY, newScaleRaw) {
+  const newScale = Math.max(MIN_SCALE, Math.min(newScaleRaw, MAX_SCALE));
+  const rect = stage.getBoundingClientRect();
+  const mx = clientX - rect.left, my = clientY - rect.top;
+  const canvasX = (mx - tx) / scale;
+  const canvasY = (my - ty) / scale;
+  tx = mx - canvasX * newScale;
+  ty = my - canvasY * newScale;
+  scale = newScale;
+  applyTransform();
+}
+
+let currentView = 'site';
+
+document.addEventListener('wheel', (e) => {
+  if (currentView !== 'site') return;
+  if (e.ctrlKey) {
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.01);
+    zoomAt(e.clientX, e.clientY, scale * factor);
+  }
+}, { passive: false });
+
+let gestureBaseScale = 1;
+document.addEventListener('gesturestart', (e) => {
+  if (currentView !== 'site') return;
+  e.preventDefault();
+  gestureBaseScale = scale;
+});
+document.addEventListener('gesturechange', (e) => {
+  if (currentView !== 'site') return;
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, gestureBaseScale * e.scale);
+});
+document.addEventListener('gestureend', (e) => { if (currentView === 'site') e.preventDefault(); });
+
+const PLAY_SVG = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+const PAUSE_SVG = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+
+// per-tile runtime state for sequence players
+const sequenceState = new WeakMap();
+
+CONFIG.forEach((entry) => {
+  const w = Math.round(entry.w * SIZE_SCALE);
+  const frameH = Math.round(w / entry.ratio);
+  let totalW, totalH;
+  if (entry.type === 'sequence') {
+    totalW = w;
+    totalH = entry.overlayNav
+      ? TITLE_H + frameH
+      : TITLE_H + frameH + CTRL_GAP + CTRL_H;
+  } else if (entry.type === 'layered') {
+    totalW = w + TABS_W;
+    totalH = TITLE_H + frameH;
+  } else { // "image" or "section"
+    totalW = w;
+    totalH = TITLE_H + frameH;
+  }
+
+  const item = document.createElement('div');
+  item.className = 'item';
+  item.style.left = entry.x + 'px';
+  item.style.top = entry.y + 'px';
+  item.style.width = totalW + 'px';
+  item.style.height = totalH + 'px';
+
+  const inner = document.createElement('div');
+  inner.className = 'item-inner';
+  item.appendChild(inner);
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'tile-title';
+  titleEl.textContent = entry.label;
+  inner.appendChild(titleEl);
+
+  if (entry.type === 'sequence') {
+    const frame = document.createElement('div');
+    frame.className = 'tile-frame' + (entry.overlayNav ? ' frame-overlaynav' : '');
+    frame.style.height = frameH + 'px';
+
+    const imgEls = entry.images.map((src, i) => {
+      const img = document.createElement('img');
+      img.className = 'frame-img' + (i === 0 ? ' active' : '');
+      img.src = src;
+      img.alt = entry.label + ' – Bild ' + (i + 1);
+      frame.appendChild(img);
+      return img;
+    });
+
+    let playBtn = null, pointEls = [], timeline = null;
+    let navPrev = null, navNext = null, counterEl = null;
+
+    if (entry.overlayNav) {
+      // compact nav: plain triangles, sitting just beside the frame, barely overlapping it
+      navPrev = document.createElement('div');
+      navPrev.className = 'nav-arrow nav-prev';
+      frame.appendChild(navPrev);
+
+      navNext = document.createElement('div');
+      navNext.className = 'nav-arrow nav-next';
+      frame.appendChild(navNext);
+
+      inner.appendChild(frame);
+    } else {
+      const controls = document.createElement('div');
+      controls.className = 'seq-controls';
+      controls.style.marginTop = CTRL_GAP + 'px';
+
+      if (!entry.noPlay) {
+        playBtn = document.createElement('div');
+        playBtn.className = 'seq-play-btn';
+        playBtn.innerHTML = PLAY_SVG;
+      }
+
+      timeline = document.createElement('div');
+      timeline.className = 'seq-timeline';
+      const line = document.createElement('div');
+      line.className = 'seq-line';
+      timeline.appendChild(line);
+
+      const n = imgEls.length;
+      imgEls.forEach((_, i) => {
+        const leftExpr = 'calc(22px + (100% - 44px) * ' + (i / (n - 1)) + ')';
+
+        const pt = document.createElement('div');
+        pt.className = 'seq-point' + (i === 0 ? ' active' : '');
+        pt.style.left = leftExpr;
+        timeline.appendChild(pt);
+        pointEls.push(pt);
+
+        const dateLabel = document.createElement('div');
+        dateLabel.className = 'seq-date' + (i === 0 ? ' active' : '');
+        dateLabel.style.left = leftExpr;
+        dateLabel.textContent = (entry.dates && entry.dates[i]) || ('Datum ' + (i + 1));
+        timeline.appendChild(dateLabel);
+      });
+
+      if (playBtn) controls.appendChild(playBtn);
+      controls.appendChild(timeline);
+      inner.appendChild(frame);
+      inner.appendChild(controls);
+    }
+
+    let financeImg = null, financeBtn = null;
+    if (entry.finance) {
+      financeImg = document.createElement('img');
+      financeImg.className = 'frame-img';
+      financeImg.src = entry.finance;
+      financeImg.alt = entry.label + ' – Finance';
+      frame.appendChild(financeImg);
+
+      financeBtn = document.createElement('div');
+      financeBtn.className = 'finance-btn';
+      financeBtn.textContent = 'Finance';
+      titleEl.appendChild(financeBtn);
+    }
+
+    sequenceState.set(item, {
+      imgEls, tickEls: pointEls, dateEls: timeline ? timeline.querySelectorAll('.seq-date') : [],
+      playBtn, idx: 0, playing: false, timer: null,
+      financeImg, financeBtn, financeActive: false,
+      navPrev, navNext, counterEl
+    });
+
+  } else if (entry.type === 'layered') {
+    const row = document.createElement('div');
+    row.className = 'map-row';
+    row.style.height = frameH + 'px';
+
+    const frame = document.createElement('div');
+    frame.className = 'tile-frame';
+    frame.style.width = w + 'px';
+    frame.style.height = '100%';
+
+    const tabsCol = document.createElement('div');
+    tabsCol.className = 'layer-tabs';
+    tabsCol.style.width = TABS_W + 'px';
+    tabsCol.style.height = '100%';
+
+    const legendWrap = document.createElement('div');
+    legendWrap.className = 'map-legend no-legend';
+    const legendToggle = document.createElement('button');
+    legendToggle.className = 'legend-toggle';
+    legendToggle.type = 'button';
+    legendToggle.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Legend</span>';
+    const legendPanel = document.createElement('div');
+    legendPanel.className = 'legend-panel';
+    const legendImg = document.createElement('img');
+    legendImg.alt = 'Legend';
+    legendPanel.appendChild(legendImg);
+    legendWrap.appendChild(legendToggle);
+    legendWrap.appendChild(legendPanel);
+    frame.appendChild(legendWrap);
+    legendWrap._homeParent = frame;
+
+    // While pinned, the legend lives outside #stage (see applyTransform),
+    // so #stage's own tap-detection never sees clicks on it anymore —
+    // a plain click listener (same approach as the Reset button) covers
+    // that case. While NOT pinned, #stage's hit-test already handles the
+    // toggle, so this listener stays a no-op then to avoid double-toggling.
+    legendToggle.addEventListener('click', () => {
+      if (legendWrap.classList.contains('pinned')) {
+        legendWrap.classList.toggle('open');
+      }
+    });
+
+    let firstAssigned = false;
+
+    entry.layers.forEach((layer) => {
+      const img = document.createElement('img');
+      img.className = 'frame-img' + (!firstAssigned ? ' active' : '');
+      img.src = layer.src;
+      img.alt = layer.tab;
+      frame.appendChild(img);
+
+      const tab = document.createElement('div');
+      tab.className = 'layer-tab' + (layer.gapBefore ? ' gap-before' : '');
+      tab.textContent = layer.tab;
+      tab._img = img;
+      tab._legend = layer.legend || null;
+      if (!firstAssigned) {
+        tab.classList.add('active');
+        firstAssigned = true;
+        if (layer.legend) {
+          legendImg.src = layer.legend;
+          legendWrap.classList.remove('no-legend');
+        }
+      }
+
+      if (layer.subGrid) {
+        const grid = document.createElement('div');
+        grid.className = 'layer-subgrid';
+        layer.subGrid.forEach((sub) => {
+          const simg = document.createElement('img');
+          simg.className = 'frame-img';
+          simg.src = sub.src;
+          simg.alt = sub.tab;
+          frame.appendChild(simg);
+
+          const cell = document.createElement('div');
+          cell.className = 'layer-subgrid-cell';
+          cell.textContent = sub.tab;
+          cell._img = simg;
+          cell._legend = sub.legend || null;
+          grid.appendChild(cell);
+        });
+        tab.appendChild(grid);
+      }
+      tabsCol.appendChild(tab);
+    });
+
+    row.appendChild(frame);
+    row.appendChild(tabsCol);
+    inner.appendChild(row);
+
+  } else if (entry.type === 'image') {
+    const frame = document.createElement('div');
+    frame.className = 'tile-frame';
+    frame.style.height = frameH + 'px';
+
+    const img = document.createElement('img');
+    img.className = 'frame-img active';
+    img.src = entry.src;
+    img.alt = entry.label;
+    frame.appendChild(img);
+
+    inner.appendChild(frame);
+
+  } else if (entry.type === 'section') {
+    // text section — title bar + frame; shows entry.src once supplied,
+    // stays an empty dark frame until then
+    const frame = document.createElement('div');
+    frame.className = 'tile-frame';
+    frame.style.height = frameH + 'px';
+    if (entry.src) {
+      const img = document.createElement('img');
+      img.className = 'frame-img active';
+      img.src = entry.src;
+      img.alt = entry.label;
+      frame.appendChild(img);
+    }
+    inner.appendChild(frame);
+  }
+
+  canvas.appendChild(item);
+});
+
+// --- sequence player logic ---
+function seqSetActive(state, idx) {
+  state.idx = idx;
+  if (state.financeActive) {
+    state.financeActive = false;
+    if (state.financeImg) state.financeImg.classList.remove('active');
+    if (state.financeBtn) state.financeBtn.classList.remove('active');
+  }
+  state.imgEls.forEach((im, k) => im.classList.toggle('active', k === idx));
+  state.tickEls.forEach((t, k) => t.classList.toggle('active', k === idx));
+  state.dateEls.forEach((d, k) => d.classList.toggle('active', k === idx));
+  if (state.counterEl) state.counterEl.textContent = (idx + 1) + ' / ' + state.imgEls.length;
+}
+function seqStart(state) {
+  if (state.playing) return;
+  state.playing = true;
+  state.playBtn.innerHTML = PAUSE_SVG;
+  state.timer = setInterval(() => {
+    seqSetActive(state, (state.idx + 1) % state.imgEls.length);
+  }, 1100);
+}
+function seqStop(state) {
+  state.playing = false;
+  state.playBtn.innerHTML = PLAY_SVG;
+  clearInterval(state.timer);
+}
+function financeToggle(state) {
+  state.financeActive = !state.financeActive;
+  if (state.financeActive) {
+    seqStop(state);
+    state.imgEls.forEach((im) => im.classList.remove('active'));
+    state.financeImg.classList.add('active');
+    state.financeBtn.classList.add('active');
+  } else {
+    state.financeImg.classList.remove('active');
+    state.financeBtn.classList.remove('active');
+    state.imgEls[state.idx].classList.add('active');
+  }
+}
+
+// --- layered-map selection: one shared "active" state across all tabs
+// and sub-grid cells within a tile, whichever was tapped last ---
+function mapSelect(item, chosenEl) {
+  item.querySelectorAll('.layer-tab').forEach((t) => t.classList.remove('active'));
+  item.querySelectorAll('.layer-subgrid-cell').forEach((c) => c.classList.remove('active'));
+  const parentTab = chosenEl.classList.contains('layer-tab') ? chosenEl : chosenEl.closest('.layer-tab');
+  if (parentTab) parentTab.classList.add('active');
+  chosenEl.classList.add('active');
+  item.querySelectorAll('.frame-img').forEach((im) => im.classList.toggle('active', im === chosenEl._img));
+
+  // swap this tile's legend to match the newly active layer/sub-cell
+  // (a sub-grid cell can have its own legend; falls back to the parent
+  // layer's legend if the cell doesn't define one)
+  const legendWrap = item.querySelector('.map-legend');
+  if (legendWrap && parentTab) {
+    const legendSrc = (chosenEl._legend != null) ? chosenEl._legend : parentTab._legend;
+    if (legendSrc) {
+      legendWrap.querySelector('.legend-panel img').src = legendSrc;
+      legendWrap.classList.remove('no-legend');
+    } else {
+      legendWrap.classList.add('no-legend');
+      legendWrap.classList.remove('open');
+    }
+  }
+}
+
+// --- pan & zoom (pointer-events based, multi-touch pinch) ---
+let scale = 1, tx = 0, ty = 0;
+const MIN_SCALE = 0.35, MAX_SCALE = 8;
+const pointers = new Map();
+let dragMoved = false;
+let lastDist = null;
+let lastSingle = null;
+
+const LEGEND_PIN_THRESHOLD = 1; // zoom level past which legends detach and pin to the screen
+
+function applyTransform() {
+  canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  // Map legends: below the threshold they're normal canvas content (scale
+  // with everything else, so they don't balloon in size when zoomed out).
+  // Past the threshold, detach them from the canvas and pin them to a
+  // fixed screen position — exactly like the Reset button — so they stay
+  // put and readable while you explore details deeper inside the map.
+  const shouldPin = scale > LEGEND_PIN_THRESHOLD;
+  document.querySelectorAll('.map-legend').forEach((el) => {
+    const isPinned = el.classList.contains('pinned');
+    if (shouldPin && !isPinned) {
+      el.classList.add('pinned');
+      document.body.appendChild(el);
+    } else if (!shouldPin && isPinned) {
+      el.classList.remove('pinned');
+      el._homeParent.insertBefore(el, el._homeParent.firstChild);
+    }
+  });
+}
+
+// --- click on a tile's title bar: zoom in on that tile ---
+function zoomToItem(item, padding = 60) {
+  const w = item.offsetWidth, h = item.offsetHeight;
+  const x = item.offsetLeft, y = item.offsetTop;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const newScale = Math.max(MIN_SCALE, Math.min(
+    Math.min(vw / (w + padding * 2), vh / (h + padding * 2)),
+    MAX_SCALE
+  ));
+  scale = newScale;
+  tx = (vw - w * scale) / 2 - x * scale;
+  ty = (vh - h * scale) / 2 - y * scale;
+  applyTransform();
+}
+
+function centerCanvas() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const fitScale = Math.min(vw / CANVAS_W, vh / CANVAS_H);
+  scale = Math.max(MIN_SCALE, Math.min(fitScale, MAX_SCALE));
+  tx = (vw - CANVAS_W * scale) / 2;
+  ty = (vh - CANVAS_H * scale) / 2;
+  applyTransform();
+}
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function mid(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+stage.addEventListener('pointerdown', (e) => {
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  dragMoved = false;
+  if (pointers.size === 1) {
+    lastSingle = { x: e.clientX, y: e.clientY };
+  } else if (pointers.size === 2) {
+    const pts = Array.from(pointers.values());
+    lastDist = dist(pts[0], pts[1]);
+  }
+});
+
+stage.addEventListener('pointermove', (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 1 && lastSingle) {
+    const dx = e.clientX - lastSingle.x;
+    const dy = e.clientY - lastSingle.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+    tx += dx; ty += dy;
+    lastSingle = { x: e.clientX, y: e.clientY };
+    applyTransform();
+  } else if (pointers.size === 2) {
+    const pts = Array.from(pointers.values());
+    const d = dist(pts[0], pts[1]);
+    const m = mid(pts[0], pts[1]);
+    if (lastDist) {
+      const factor = d / lastDist;
+      const newScale = Math.max(MIN_SCALE, Math.min(scale * factor, MAX_SCALE));
+      const rect = stage.getBoundingClientRect();
+      const mx = m.x - rect.left, my = m.y - rect.top;
+      const canvasX = (mx - tx) / scale;
+      const canvasY = (my - ty) / scale;
+      tx = mx - canvasX * newScale;
+      ty = my - canvasY * newScale;
+      scale = newScale;
+      dragMoved = true;
+      applyTransform();
+    }
+    lastDist = d;
+  }
+});
+
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) { lastDist = null; }
+  if (pointers.size === 1) {
+    lastSingle = Array.from(pointers.values())[0];
+  } else if (pointers.size === 0) {
+    lastSingle = null;
+  }
+}
+
+// Unified tap handling: the stage holds pointer capture (needed for smooth
+// pan/pinch), so a plain "click" on a nested control is not reliable across
+// browsers/input types. Instead we look up what's actually under the
+// pointer at release time and act on it directly.
+let lastTap = 0;
+
+function handlePointerUp(e) {
+  const wasSinglePointer = pointers.size === 1;
+  endPointer(e);
+
+  if (!wasSinglePointer || dragMoved) { lastTap = 0; return; }
+
+  const target = document.elementFromPoint(e.clientX, e.clientY);
+  let hitInteractive = false;
+
+  if (target) {
+    const cellEl = target.closest('.layer-subgrid-cell');
+    const tabEl = !cellEl ? target.closest('.layer-tab') : null;
+    const legendToggleEl = target.closest('.legend-toggle');
+    const financeBtnEl = target.closest('.finance-btn');
+    const titleEl = !financeBtnEl ? target.closest('.tile-title') : null;
+    const playBtnEl = !financeBtnEl ? target.closest('.seq-play-btn') : null;
+    const tickEl = !playBtnEl && !financeBtnEl ? target.closest('.seq-point') : null;
+    const navPrevEl = !tickEl && !playBtnEl && !financeBtnEl ? target.closest('.nav-prev') : null;
+    const navNextEl = !navPrevEl && !tickEl && !playBtnEl && !financeBtnEl ? target.closest('.nav-next') : null;
+
+    if (cellEl) {
+      hitInteractive = true;
+      mapSelect(cellEl.closest('.item'), cellEl);
+    } else if (tabEl) {
+      hitInteractive = true;
+      mapSelect(tabEl.closest('.item'), tabEl);
+    } else if (legendToggleEl) {
+      hitInteractive = true;
+      legendToggleEl.closest('.map-legend').classList.toggle('open');
+    } else if (financeBtnEl) {
+      hitInteractive = true;
+      const item = financeBtnEl.closest('.item');
+      const state = sequenceState.get(item);
+      if (state) { financeToggle(state); }
+    } else if (titleEl) {
+      hitInteractive = true;
+      zoomToItem(titleEl.closest('.item'));
+    } else if (playBtnEl) {
+      hitInteractive = true;
+      const item = playBtnEl.closest('.item');
+      const state = sequenceState.get(item);
+      if (state) { state.playing ? seqStop(state) : seqStart(state); }
+    } else if (tickEl) {
+      hitInteractive = true;
+      const item = tickEl.closest('.item');
+      const state = sequenceState.get(item);
+      if (state) {
+        const idx = state.tickEls.indexOf(tickEl);
+        seqStop(state);
+        seqSetActive(state, idx);
+      }
+    } else if (navPrevEl) {
+      hitInteractive = true;
+      const item = navPrevEl.closest('.item');
+      const state = sequenceState.get(item);
+      if (state) seqSetActive(state, (state.idx - 1 + state.imgEls.length) % state.imgEls.length);
+    } else if (navNextEl) {
+      hitInteractive = true;
+      const item = navNextEl.closest('.item');
+      const state = sequenceState.get(item);
+      if (state) seqSetActive(state, (state.idx + 1) % state.imgEls.length);
+    }
+  }
+
+  if (!hitInteractive) {
+    const now = Date.now();
+    if (now - lastTap < 300) centerCanvas();
+    lastTap = now;
+  } else {
+    lastTap = 0;
+  }
+}
+
+stage.addEventListener('pointerup', handlePointerUp);
+stage.addEventListener('pointercancel', endPointer);
+
+document.getElementById('reset-btn').addEventListener('click', centerCanvas);
+window.addEventListener('resize', centerCanvas);
+centerCanvas();
+
+// ============================================================
+// Methods + Biotopes view: a separate full-screen view (not a
+// different page) showing one wide document image, swipeable
+// left/right and zoomable to read the small labels.
+// ============================================================
+const siteView = document.getElementById('site-view');
+const methodsView = document.getElementById('methods-view');
+const methodsStage = document.getElementById('methods-stage');
+const docWrap = document.getElementById('doc-wrap');
+const docImg = document.getElementById('doc-img');
+
+const DOC_W = 8000, DOC_H = 1208; // native pixel size of methods.jpg
+docImg.style.width = DOC_W + 'px';
+docImg.style.height = DOC_H + 'px';
+
+let docScale = 1, docTx = 0, docTy = 0;
+let docFitScale = 1;
+const DOC_MAX_SCALE_FACTOR = 6;
+
+function applyDocTransform() {
+  docWrap.style.transform = `translate(${docTx}px, ${docTy}px) scale(${docScale})`;
+}
+
+function docMinScale() { return docFitScale; }
+function docMaxScale() { return docFitScale * DOC_MAX_SCALE_FACTOR; }
+
+function clampDocPan() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const docW = DOC_W * docScale, docH = DOC_H * docScale;
+  docTx = docW <= vw ? (vw - docW) / 2 : Math.min(0, Math.max(vw - docW, docTx));
+  docTy = docH <= vh ? (vh - docH) / 2 : Math.min(0, Math.max(vh - docH, docTy));
+}
+
+function centerDoc() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  docFitScale = vh / DOC_H;
+  docScale = docFitScale;
+  docTx = (vw - DOC_W * docScale) / 2;
+  docTy = 0;
+  clampDocPan();
+  applyDocTransform();
+}
+
+function zoomDocAt(clientX, clientY, newScaleRaw) {
+  const newScale = Math.max(docMinScale(), Math.min(newScaleRaw, docMaxScale()));
+  const rect = methodsStage.getBoundingClientRect();
+  const mx = clientX - rect.left, my = clientY - rect.top;
+  const dx = (mx - docTx) / docScale, dy = (my - docTy) / docScale;
+  docTx = mx - dx * newScale;
+  docTy = my - dy * newScale;
+  docScale = newScale;
+  clampDocPan();
+  applyDocTransform();
+}
+
+methodsStage.addEventListener('wheel', (e) => {
+  if (e.ctrlKey) {
+    e.preventDefault();
+    zoomDocAt(e.clientX, e.clientY, docScale * Math.exp(-e.deltaY * 0.01));
+  } else {
+    // plain trackpad/scroll swipe also pans, so a two-finger swipe
+    // moves left/right through the document without needing pinch
+    e.preventDefault();
+    docTx -= e.deltaX;
+    docTy -= e.deltaY;
+    clampDocPan();
+    applyDocTransform();
+  }
+}, { passive: false });
+
+let docGestureBaseScale = 1;
+methodsStage.addEventListener('gesturestart', (e) => { e.preventDefault(); docGestureBaseScale = docScale; });
+methodsStage.addEventListener('gesturechange', (e) => {
+  e.preventDefault();
+  zoomDocAt(e.clientX, e.clientY, docGestureBaseScale * e.scale);
+});
+methodsStage.addEventListener('gestureend', (e) => e.preventDefault());
+
+const docPointers = new Map();
+let docLastSingle = null, docLastDist = null;
+function docDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function docMid(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+methodsStage.addEventListener('pointerdown', (e) => {
+  methodsStage.setPointerCapture(e.pointerId);
+  docPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (docPointers.size === 1) {
+    docLastSingle = { x: e.clientX, y: e.clientY };
+  } else if (docPointers.size === 2) {
+    docLastDist = docDist(...Array.from(docPointers.values()));
+  }
+});
+
+methodsStage.addEventListener('pointermove', (e) => {
+  if (!docPointers.has(e.pointerId)) return;
+  docPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (docPointers.size === 1 && docLastSingle) {
+    docTx += e.clientX - docLastSingle.x;
+    docTy += e.clientY - docLastSingle.y;
+    docLastSingle = { x: e.clientX, y: e.clientY };
+    clampDocPan();
+    applyDocTransform();
+  } else if (docPointers.size === 2) {
+    const pts = Array.from(docPointers.values());
+    const d = docDist(pts[0], pts[1]);
+    const m = docMid(pts[0], pts[1]);
+    if (docLastDist) zoomDocAt(m.x, m.y, docScale * (d / docLastDist));
+    docLastDist = d;
+  }
+});
+
+function endDocPointer(e) {
+  docPointers.delete(e.pointerId);
+  if (docPointers.size < 2) docLastDist = null;
+  docLastSingle = docPointers.size === 1 ? Array.from(docPointers.values())[0] : null;
+}
+methodsStage.addEventListener('pointerup', endDocPointer);
+methodsStage.addEventListener('pointercancel', endDocPointer);
+
+document.getElementById('doc-reset-btn').addEventListener('click', centerDoc);
+
+// ---- jump to a named section (Organizing / Creating / Maintaining / Monitoring) ----
+function jumpToSection(centerX) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  docScale = docFitScale;
+  docTx = vw / 2 - centerX * docScale;
+  docTy = 0;
+  clampDocPan();
+  applyDocTransform();
+}
+
+document.querySelectorAll('.section-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.section-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    jumpToSection(Number(btn.dataset.x));
+  });
+});
+
+// ---- view switching ----
+function showMethodsView() {
+  currentView = 'methods';
+  siteView.classList.add('hidden');
+  methodsView.classList.remove('hidden');
+  centerDoc();
+}
+function showSiteView() {
+  currentView = 'site';
+  methodsView.classList.add('hidden');
+  siteView.classList.remove('hidden');
+}
+
+document.getElementById('methods-btn').addEventListener('click', showMethodsView);
+document.getElementById('back-btn').addEventListener('click', showSiteView);
+
+window.addEventListener('resize', () => {
+  if (currentView === 'methods') centerDoc();
+});
+</script>
+</body>
+</html>
