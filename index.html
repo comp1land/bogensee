@@ -46,7 +46,24 @@
     z-index: 1;
   }
   .tick.tl { top: 26px; left: 32px; }
-  .tick.bl { bottom: 26px; left: 32px; }
+  /* bottom line: project title left, authors right — together the block
+     spans the full width, ending just before the Reset button */
+  .tick.bl {
+    bottom: 26px; left: 32px;
+    right: 120px;                 /* 28px (Reset offset) + 64px (Reset width) + 28px gap */
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 120px;                   /* minimum distance between title and names */
+    white-space: nowrap;
+  }
+  .tick-authors {
+    font-size: 17px;              /* smaller than the 24px title */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: rgba(156,156,156,0.22); /* more subdued than the title */
+  }
   .tick.tr { top: 26px; right: 32px; }
 
   #stage {
@@ -176,6 +193,26 @@
     background: rgba(255,255,255,0.14);
     border-color: var(--accent);
   }
+
+  /* ---------- clickable number circles in the axo drawings → method ---------- */
+  .method-hots {
+    position: absolute; inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    display: none;
+  }
+  .method-hots.active { display: block; }
+  .method-hot {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .method-hot:hover { box-shadow: 0 0 0 3px #fff, 0 0 0 5px #00a05a; }
+  .method-hot.debug { outline: 2px dashed red; }
 
   /* ---------- sequence controls: sits BELOW the frame, external ---------- */
   .seq-controls {
@@ -359,21 +396,82 @@
     text-transform: uppercase;
     color: var(--ink-dim);
   }
+  /* label curved along the lower arc of the circle (built in JS from the
+     <span> text, see curveButtonLabels) */
+  .reset-btn { position: fixed; }
+  .reset-btn svg.btn-arc {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    overflow: visible;
+    stroke: none;
+    pointer-events: none;
+  }
+  .btn-arc text {
+    fill: var(--ink-dim);
+    font-size: 11px;              /* same size as the old straight labels */
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
 
   /* ---------- fixed nav button to the Methods+Biotopes view, top-left; same look as .reset-btn ---------- */
+  /* round buttons fade out when they're not relevant for the tile you've
+     zoomed in on (see updateRoundButtons in JS) */
+  #site-view .reset-btn { transition: opacity 0.25s ease; }
+  #site-view .reset-btn.btn-hidden { opacity: 0; pointer-events: none; }
+
+  /* ---------- Windows-XP-style tooltip, overview only (see JS) ---------- */
+  #tooltip {
+    position: fixed;
+    z-index: 35;
+    max-width: 440px;
+    padding: 4px 8px 5px;
+    background: #ffffe1;
+    border: 1px solid #000;
+    box-shadow: 2px 2px 3px rgba(0,0,0,0.45);
+    color: #000;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 14px;
+    line-height: 1.35;
+    pointer-events: none;
+    display: none;
+  }
+  #tooltip.show { display: block; }
+  #tooltip div + div { margin-top: 2px; }
+
   #methods-btn {
     top: 68px; left: 32px;
     bottom: auto; right: auto;
   }
 
+  /* ---------- fixed nav button to the Biotope legend view, below Methods; same look ---------- */
+  #biotope-btn {
+    top: 146px; left: 32px;
+    bottom: auto; right: auto;
+  }
+
+  /* ---------- "Legend" button top-left inside the plan frames: same look as
+     the Map legend button, but jumps straight to the Biotope view ---------- */
+  .plan-legend {
+    position: absolute;
+    top: 12px; left: 12px;
+    z-index: 6;
+  }
+
+  /* ---------- reopens the explanation slideshow, top-right; same look as .reset-btn ---------- */
+  #explanation-btn {
+    top: 68px; right: 32px;
+    bottom: auto; left: auto;
+  }
+
   /* ---------- back button, top-left, inside the Methods+Biotopes view; same look as .reset-btn ---------- */
-  #back-btn {
+  .doc-back {
     top: 26px; left: 32px;
     bottom: auto; right: auto;
   }
 
   /* ---------- Methods+Biotopes view: horizontally swipeable document ---------- */
-  #methods-view {
+  .doc-view {
     position: fixed;
     inset: 0;
     z-index: 30;
@@ -381,52 +479,155 @@
   }
   .hidden { display: none; }
 
-  #methods-stage {
+  .doc-stage {
     position: fixed;
     inset: 0;
     overflow: hidden;
   }
 
-  #doc-wrap {
+  .doc-wrap {
     position: absolute;
     top: 0; left: 0;
     transform-origin: 0 0;
   }
-  #doc-wrap img {
+  .doc-wrap img {
     display: block;
     pointer-events: none;
   }
 
+  /* fine grid, sits behind the icons and scrolls slower (layered
+     scroll-parallax). Always fills the whole screen (fixed, edge to
+     edge) regardless of the icon layer's zoom level — only the pattern
+     itself shifts with panning (background-position, see JS), it never
+     shrinks down to the icons' fitted size. White background, black
+     lines, per reference. */
+  .doc-bg {
+    position: fixed;
+    inset: 0;
+    background-color: #fff;
+    background-image:
+      repeating-linear-gradient(90deg, rgba(0,0,0,0.35) 0, rgba(0,0,0,0.35) 1px, transparent 1px, transparent 68.4px),
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.35) 0, rgba(0,0,0,0.35) 1px, transparent 1px, transparent 116.8px);
+  }
+
+  /* "Unavailable" / "Available" scale: behaves exactly like normal
+     canvas content (like the icons) — its Y position AND its own size
+     both scale with docScale/docTy, so it visibly grows/shrinks and
+     moves as you zoom/pan, same as everything else. The one difference:
+     X always stays pinned to the left screen edge, never following
+     horizontal pan — see positionDocScale() in JS. No edge-clamping. */
+  .doc-scale-anchor {
+    position: fixed;
+    left: 26px;
+    z-index: 15;
+    transform-origin: left center;
+    pointer-events: none;
+  }
+  .doc-axis-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: "Courier New", Courier, monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: rgba(0,0,0,0.62);
+    color: #fff;
+    padding: 8px 6px;
+  }
+  #doc-scale-line {
+    position: fixed;
+    left: 39px;
+    width: 1px;
+    z-index: 14;
+    background: rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+  #doc-scale-line::before, #doc-scale-line::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    border: 5px solid transparent;
+  }
+  #doc-scale-line::before {
+    top: -1px;
+    transform: translate(-50%, -100%);
+    border-bottom-color: rgba(0,0,0,0.5);
+  }
+  #doc-scale-line::after {
+    bottom: -1px;
+    transform: translate(-50%, 100%);
+    border-top-color: rgba(0,0,0,0.5);
+  }
+
   /* ---------- section jump-nav, bottom-center, inside the Methods+Biotopes view ---------- */
-  #section-nav {
+  .section-nav {
     position: fixed;
     bottom: 28px; left: 50%;
     transform: translateX(-50%);
     z-index: 20;
     display: flex;
-    background: rgba(27,27,27,0.92);
-    border: 1px solid var(--panel-edge);
-    border-radius: 4px;
-    overflow: hidden;
-    box-shadow: 0 8px 22px rgba(0,0,0,0.5);
+    align-items: center;
+  }
+  .section-nav-line {
+    width: 40px;
+    height: 1px;
+    background: #000;
   }
   .section-btn {
     font-family: "Courier New", Courier, monospace;
-    padding: 16px 26px;
-    font-size: 16px;
+    padding: 8px 16px;
+    font-size: 15px;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    color: var(--ink-dim);
-    background: transparent;
-    border: none;
-    border-right: 1px solid var(--panel-edge);
+    color: #fff;
+    background: #000;
+    border: 1px solid #000;
     touch-action: manipulation;
   }
-  .section-btn:last-child { border-right: none; }
   .section-btn.active {
-    color: var(--ink);
-    background: rgba(255,255,255,0.1);
+    font-weight: bold;
+    padding: 13px 24px;
+    font-size: 16px;
   }
+
+  /* ---------- intro "explanation" slideshow: floats above the site on load ---------- */
+  /* full-screen layer behind the window: blurs the site and swallows all
+     taps/clicks, so nothing behind it can be operated while it's open */
+  #expl-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(12,12,12,0.15);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  #expl-layer.hidden { display: none; }
+  #explanation {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  #explanation .tile-title { height: 44px; font-size: 18px; padding: 0 6px 0 16px; }
+  .expl-close {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: none; padding: 0; cursor: pointer;
+    touch-action: manipulation;
+  }
+  .expl-close svg { width: 20px; height: 20px; fill: none; stroke: var(--ink); stroke-width: 1.8; }
+  #expl-frame {
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+    outline: 1px solid rgba(255,255,255,0.16);
+    outline-offset: -1px;
+  }
+  #expl-img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  .expl-hot { position: absolute; cursor: pointer; touch-action: manipulation; }
+  .expl-hot.debug { outline: 2px dashed red; background: rgba(255,0,0,0.08); }
 </style>
 </head>
 <body>
@@ -436,11 +637,22 @@
 <div id="backdrop"></div>
 <div class="tick tl">52.538503 N · 13.359849 E</div>
 <div class="tick tr">52.774927 N · 13.52574 E</div>
-<div class="tick bl">COMPENSATION LAB e.V.</div>
+<div class="tick bl"><span>COMPENSATION LAB e.V.</span><span class="tick-authors">by Claudius Kämpf, Domas Karazija, Selma Richter &amp; Mischa Ushakov</span></div>
 <button id="methods-btn" class="reset-btn" type="button">
   <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
   <span>Methods</span>
 </button>
+<button id="biotope-btn" class="reset-btn" type="button">
+  <svg viewBox="0 0 24 24"><path d="M5 19c0-8 6-14 14-14 0 8-6 14-14 14z"/><path d="M5 19l8-8"/></svg>
+  <span>Biotope</span>
+</button>
+
+<button id="explanation-btn" class="reset-btn" type="button">
+  <svg viewBox="0 0 24 24"><path d="M9 9a3 3 0 1 1 4.5 2.6c-.9.5-1.5 1.3-1.5 2.4v.5"/><path d="M12 18v.5"/></svg>
+  <span>Explanation</span>
+</button>
+
+<div id="tooltip"></div>
 
 <div id="stage">
   <div id="canvas"><!-- items injected by JS from CONFIG --></div>
@@ -453,28 +665,80 @@
 
 </div>
 
-<div id="methods-view" class="hidden">
-  <div id="methods-stage">
-    <div id="doc-wrap">
-      <img id="doc-img" src="methods.jpg" alt="Methods and Biotopes — Compensation Lab e.V.">
+<div id="expl-layer">
+<div id="explanation">
+  <div class="tile-title">
+    <span>explanation</span>
+    <button class="expl-close" type="button" aria-label="Schließen">
+      <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
+    </button>
+  </div>
+  <div id="expl-frame">
+    <img id="expl-img" src="intro1.jpg" alt="Project explanation">
+  </div>
+</div>
+</div>
+
+<div id="methods-view" class="doc-view hidden">
+  <div id="methods-stage" class="doc-stage">
+    <div id="doc-bg" class="doc-bg"></div>
+    <div id="doc-wrap" class="doc-wrap">
+      <img id="doc-img" class="doc-img" src="methods-icons.png" alt="Methods and Biotopes — Compensation Lab e.V.">
     </div>
   </div>
 
-  <button id="back-btn" class="reset-btn" type="button">
+  <div class="doc-scale-anchor" id="scale-anchor-top">
+    <div class="doc-axis-label">Unavailable</div>
+  </div>
+  <div id="doc-scale-line"></div>
+  <div class="doc-scale-anchor" id="scale-anchor-bottom">
+    <div class="doc-axis-label">Available</div>
+  </div>
+
+  <button id="back-btn" class="reset-btn doc-back" type="button">
     <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
     <span>Places</span>
   </button>
 
-  <button id="doc-reset-btn" class="reset-btn" aria-label="Zur Ausgangsansicht">
+  <button id="doc-reset-btn" class="reset-btn doc-reset" aria-label="Zur Ausgangsansicht">
     <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 3v6h6"/></svg>
     <span>Reset</span>
   </button>
 
-  <div id="section-nav">
+  <div id="section-nav" class="section-nav">
     <button class="section-btn" type="button" data-x="1000">Organizing</button>
+    <div class="section-nav-line"></div>
     <button class="section-btn" type="button" data-x="3000">Creating</button>
+    <div class="section-nav-line"></div>
     <button class="section-btn" type="button" data-x="5000">Maintaining</button>
+    <div class="section-nav-line"></div>
     <button class="section-btn" type="button" data-x="7000">Monitoring</button>
+  </div>
+</div>
+
+<div id="biotope-view" class="doc-view hidden">
+  <div class="doc-stage">
+    <div class="doc-bg"></div>
+    <div class="doc-wrap">
+      <img class="doc-img" src="biotope-legende.png" alt="Biotope legend — Compensation Lab e.V.">
+    </div>
+  </div>
+
+  <button class="reset-btn doc-back" type="button">
+    <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    <span>Places</span>
+  </button>
+
+  <button class="reset-btn doc-reset" aria-label="Zur Ausgangsansicht">
+    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 3v6h6"/></svg>
+    <span>Reset</span>
+  </button>
+
+  <!-- data-from / data-to = left / right edge of the section, as share of the legend's width -->
+  <div class="section-nav">
+    <button class="section-btn" type="button" data-from="0" data-to="0.66">Existing</button>
+    <div class="section-nav-line"></div>
+    <button class="section-btn" type="button" data-from="0.69" data-to="1">Created</button>
   </div>
 </div>
 
@@ -521,6 +785,16 @@
       Platzhalter-Rahmen.
       src (optional), ratio, w, x, y: wie oben
 
+   "biotopeLegend: true" (optional, bei "sequence") — Legend-Button oben
+   links im Rahmen, führt direkt zur Biotope-Legende.
+
+   "methodLinks" (optional, bei "sequence") — klickbare Zahlenkreise pro
+   Bild, die zur entsprechenden Methode in der Methods-Ansicht springen
+   (Tabellen AXO_LINKS_… oben).
+
+   "hint: { what: "…", tip: "…" }" (optional, alle Typen) — Tooltip beim
+   Drüberfahren in der Gesamtansicht; "tip" kann weggelassen werden.
+
    Für Bildergalerien (mehrere Bilder, nur mit kleinen Pfeilen statt
    Zeitstrahl durchklickbar — wie die alte "Präsentation"-Kachel):
    "sequence" mit "overlayNav: true, noPlay: true" verwenden.
@@ -532,35 +806,121 @@ const RATIO_LANDSCAPE = 1.41421, RATIO_PORTRAIT = 0.70711, RATIO_MAP = 1.25;
 const RATIO_AXO_LEA = 7441 / 9345;             // reale Rahmenmaße Axo Lea (Mettmannplatz)
 const RATIO_AXO_BOGENSEE = 9246 / 7987;        // reale Rahmenmaße Axo Bogensee
 
+// Methods document (methods-icons.png, 8000 × 1196): pixel position of each
+// method's number, top-left. Used to zoom in on that method.
+const METHOD_POS = {
+  1: [72, 794], 2: [317, 1061], 3: [521, 1069], 4: [562, 784], 5: [818, 797], 6: [856, 1060],
+  7: [1015, 1060], 8: [521, 169], 9: [137, 436], 10: [639, 447], 11: [906, 108], 12: [952, 650],
+  13: [1007, 402], 14: [1280, 481], 15: [1296, 105], 16: [1688, 244], 17: [1552, 431], 18: [1487, 784],
+  19: [1596, 1053], 20: [1714, 780], 21: [2217, 382], 22: [2399, 204], 23: [2608, 368], 24: [2939, 291],
+  25: [2790, 638], 26: [3128, 500], 27: [2109, 834], 28: [2398, 496], 29: [2790, 743], 30: [2543, 864],
+  32: [3282, 704], 33: [3693, 535], 34: [2975, 889], 35: [3124, 886], 36: [2094, 1081], 37: [2316, 1081],
+  38: [2627, 1084], 39: [3362, 1090], 40: [3593, 1093], 41: [3805, 312], 42: [3542, 863], 43: [3700, 868],
+  44: [3854, 890], 45: [4027, 520], 46: [4358, 313], 47: [4741, 146], 48: [5374, 887], 49: [5788, 427],
+  50: [5042, 500], 51: [5225, 507], 52: [4741, 362], 53: [4510, 715], 54: [4742, 617], 55: [4741, 871],
+  56: [5468, 200], 57: [5069, 986], 58: [5581, 941], 59: [5584, 668], 60: [6371, 134], 61: [6685, 319],
+  62: [7492, 215], 63: [6020, 498], 64: [6486, 521], 65: [7129, 458], 66: [7105, 852], 67: [6287, 250],
+  68: [6803, 829], 69: [7743, 433], 70: [6305, 918], 71: [7473, 907], 72: [7782, 900], 73: [2124, 556],
+  74: [4181, 909], 77: [2389, 852]
+};
+
+// Numbered circles in the axo drawings → method numbers. One list per
+// season image (same order as "images" in CONFIG: spring, summer, autumn,
+// winter). Each entry: [method number, x %, y %] = circle center as a
+// percentage of the image's width / height.
+const AXO_LINKS_METTMANNPLATZ = [
+    // spring
+    [
+      [50, 52.71, 38.39], [10, 62.75, 40.95], [5, 32.76, 44.25], [34, 63.63, 47.20], [32, 42.42, 50.47], [12, 64.70, 51.82],
+      [8, 46.71, 52.68], [4, 77.43, 54.74], [29, 61.77, 55.75], [77, 29.79, 56.56], [11, 81.37, 57.49], [7, 39.54, 58.77],
+      [10, 77.91, 59.01], [27, 42.52, 60.48], [73, 28.86, 63.86], [45, 18.14, 64.21]
+    ],
+    // summer
+    [
+      [7, 62.41, 37.54], [50, 45.39, 38.12], [40, 58.22, 44.29], [34, 48.61, 46.70], [4, 52.75, 49.38], [23, 64.85, 51.82],
+      [68, 79.38, 52.14], [32, 54.75, 54.43], [27, 32.47, 54.89], [33, 59.14, 55.59], [6, 41.44, 59.24], [56, 84.01, 59.36],
+      [22, 72.79, 61.37], [3, 36.47, 63.94], [57, 28.77, 65.33], [13, 51.19, 66.46]
+    ],
+    // autumn
+    [
+      [27, 60.60, 35.87], [3, 58.56, 39.64], [38, 48.37, 41.85], [39, 63.82, 45.50], [19, 43.30, 50.12], [46, 70.89, 52.68],
+      [33, 60.80, 52.72], [12, 64.46, 53.22], [32, 50.17, 53.61], [26, 58.31, 54.58], [30, 34.86, 54.62], [26, 81.33, 60.29],
+      [5, 17.31, 62.34], [34, 40.57, 62.34], [73, 30.13, 64.13], [57, 27.25, 64.83], [64, 43.00, 70.46]
+    ],
+    // winter
+    [
+      [50, 41.64, 35.52], [40, 55.10, 37.19], [60, 57.39, 43.01], [56, 52.66, 43.67], [41, 74.79, 48.60], [32, 47.39, 53.11],
+      [5, 33.59, 55.28], [4, 31.79, 56.75], [66, 39.88, 59.32], [57, 80.45, 60.05], [77, 34.96, 61.14], [61, 25.60, 61.96],
+      [73, 30.38, 64.17], [57, 30.13, 75.08]
+    ]
+  ];
+const AXO_LINKS_BOGENSEE = [
+    // spring
+    [
+      [37, 95.96, 25.75], [20, 96.00, 27.96], [6, 29.11, 35.28], [36, 58.62, 35.91], [51, 60.36, 35.91], [23, 62.62, 39.82],
+      [3, 54.43, 41.03], [30, 38.94, 44.36], [50, 93.13, 46.02], [58, 54.43, 50.61], [7, 19.10, 52.40], [5, 63.08, 53.53],
+      [4, 61.22, 53.62], [4, 34.86, 54.70], [77, 48.33, 58.61], [38, 63.08, 61.08], [52, 59.05, 63.37], [34, 34.43, 83.10],
+      [53, 4.31, 84.22], [12, 17.27, 84.49]
+    ],
+    // summer
+    [
+      [42, 78.26, 27.33], [3, 60.56, 32.00], [44, 20.65, 36.67], [23, 60.56, 37.57], [49, 64.44, 38.47], [36, 48.72, 40.45],
+      [51, 50.43, 40.45], [50, 94.76, 41.03], [64, 44.10, 41.35], [45, 86.61, 43.24], [6, 35.13, 47.19], [34, 25.19, 51.06],
+      [5, 57.03, 51.28], [4, 55.16, 51.37], [53, 65.57, 55.01], [12, 86.34, 59.73], [51, 35.99, 62.88], [36, 34.28, 62.92],
+      [58, 60.95, 62.92], [35, 68.32, 65.98], [7, 72.86, 71.51], [46, 31.72, 74.34], [56, 9.24, 91.96], [68, 12.85, 92.27]
+    ],
+    // autumn
+    [
+      [53, 8.66, 20.23], [44, 34.16, 25.28], [61, 60.09, 32.49], [49, 56.87, 36.41], [26, 55.63, 43.04], [24, 57.34, 43.04],
+      [10, 70.38, 44.25], [40, 35.95, 45.83], [15, 26.63, 45.97], [60, 66.61, 54.17], [59, 45.73, 54.93], [34, 49.57, 55.61],
+      [66, 45.73, 57.10], [56, 95.54, 57.95], [23, 95.54, 60.07], [57, 36.30, 62.91], [52, 79.97, 66.43], [58, 74.22, 66.56],
+      [45, 24.38, 82.74], [50, 33.23, 93.51], [4, 28.34, 93.65], [17, 7.41, 96.80]
+    ],
+    // winter
+    [
+      [44, 27.87, 26.70], [66, 58.62, 33.15], [61, 60.02, 35.08], [50, 96.47, 39.34], [73, 33.46, 43.23], [65, 49.15, 44.67],
+      [70, 34.32, 46.01], [58, 67.31, 52.02], [36, 47.48, 53.32], [65, 49.34, 53.36], [57, 60.56, 54.79], [77, 34.90, 57.30],
+      [49, 4.04, 60.04], [41, 12.62, 66.04]
+    ]
+  ];
+
+const METHOD_HOT_SIZE = 2.2;     // diameter of a circle's click area, in % of the image width
+const SHOW_METHOD_HOTS = false;  // true = outline the click areas in red for checking
+
 const CONFIG = [
 
   {
     type: "sequence",
-    label: "Mettmannplatz axo",
+    label: "program Mettmannplatz",
+    hint: { what: "A year at Mettmannplatz – ecological, social and partner activities across four seasons", tip: "click a numbered circle to jump to its method" },
     images: ["lea-axo-1.jpg", "lea-axo-2.jpg", "lea-axo-3.jpg", "lea-axo-4.jpg"],
     dates: ["spring", "summer", "autumn", "winter"],
+    methodLinks: AXO_LINKS_METTMANNPLATZ,
     ratio: RATIO_AXO_LEA, w: 510,
     x: 500, y: 510
   },
   {
     type: "image",
     label: "overview Mettmannplatz",
+    hint: { what: "The site at a glance – 1.1 ha Brache opposite the LEA in Berlin-Wedding" },
     src: "overview-mettmannplatz.jpg",
     ratio: 1.6, w: 320,
     x: 500, y: 1240
   },
   {
     type: "sequence",
-    label: "Mettmannplatz plan",
+    label: "development Mettmannplatz",
+    hint: { what: "From sealed Brache to open space, 2026 to after 2052 – unsealing, biotope succession and built interventions", tip: "open „Legend“ for the biotopes" },
     images: ["lea-plan-1.jpg", "lea-plan-2.jpg", "lea-plan-3.jpg", "lea-plan-4.jpg", "lea-plan-5.jpg"],
     dates: ["2026", "2032", "2037", "2042", "after 2052"],
-    finance: "lea-plan-finance.jpg",
+    biotopeLegend: true,
     ratio: RATIO_LANDSCAPE, w: 990,
     x: 805, y: 1240
   },
   {
     type: "layered",
     label: "Map",
+    hint: { what: "Berlin–Brandenburg in layers – typology, analysis, ecological upgrade, weakness, state-owned land", tip: "open „Legend“ for each layer" },
     ratio: RATIO_MAP, w: 1235,
     layers: [
       { src: "typology.jpg", tab: "typology", legend: "typology_legend.jpg" },
@@ -584,31 +944,37 @@ const CONFIG = [
   },
   {
     type: "sequence",
-    label: "Axo bogensee",
+    label: "program Bogensee",
+    hint: { what: "A year at Bogensee – forest care, festivals and partner activities across four seasons", tip: "click a numbered circle to jump to its method" },
     images: ["bogensee-axo-1.jpg", "bogensee-axo-2.jpg", "bogensee-axo-3.jpg", "bogensee-axo-4.jpg"],
     dates: ["spring", "summer", "autumn", "winter"],
+    methodLinks: AXO_LINKS_BOGENSEE,
     ratio: RATIO_AXO_BOGENSEE, w: 815,
     x: 1905, y: 1240
   },
   {
     type: "sequence",
-    label: "Bogensee plan",
+    label: "development Bogensee",
+    hint: { what: "From forestry plantation to natural forest, 2026 to after 2052 – biotope succession, built interventions and renovation", tip: "switch to „Finance“ to see what the landscape earns" },
     images: ["bogensee-plan-1.jpg", "bogensee-plan-2.jpg", "bogensee-plan-3.jpg", "bogensee-plan-4.jpg", "bogensee-plan-5.jpg"],
     dates: ["2026", "2032", "2037", "2042", "after 2052"],
     finance: "bogensee-plan-finance.jpg",
+    biotopeLegend: true,
     ratio: RATIO_PORTRAIT, w: 650,
     x: 2645, y: 785
   },
   {
     type: "image",
     label: "overview Bogensee",
+    hint: { what: "The site at a glance – 16 ha of forest and former institutional campus in Wandlitz" },
     src: "overview-bogensee.jpg",
     ratio: 1.6, w: 325,
     x: 2645, y: 1750
   },
   {
     type: "section",
-    label: "section Mettmannplatz",
+    label: "bio-processes Mettmannplatz",
+    hint: { what: "Below the surface – how unsealing and plants clean and revive the soil" },
     src: "section-mettmannplatz.jpg",
     ratio: 425/1189, w: 313,
     x: 180, y: 679
@@ -616,6 +982,7 @@ const CONFIG = [
   {
     type: "sequence",
     label: "Mettmannplatz gallery",
+    hint: { what: "Mettmannplatz today – photos of the site" },
     overlayNav: true, noPlay: true,
     images: [
       "mettmannplatz-gallery-1.jpg", "mettmannplatz-gallery-2.jpg", "mettmannplatz-gallery-3.jpg",
@@ -629,6 +996,7 @@ const CONFIG = [
   {
     type: "sequence",
     label: "Bogensee gallery",
+    hint: { what: "Bogensee today – photos of the site and its buildings" },
     overlayNav: true, noPlay: true,
     images: [
       "bogensee-gallery-1.jpg", "bogensee-gallery-2.jpg", "bogensee-gallery-3.jpg",
@@ -641,7 +1009,8 @@ const CONFIG = [
   },
   {
     type: "section",
-    label: "section Bogensee",
+    label: "bio-processes Bogensee",
+    hint: { what: "Below the surface – how the forest soil learns to hold water again" },
     src: "section-bogensee.jpg",
     ratio: 425/1189, w: 313,
     x: 3245, y: 785
@@ -680,6 +1049,7 @@ let currentView = 'site';
 
 document.addEventListener('wheel', (e) => {
   if (currentView !== 'site') return;
+  if (isExplOpen()) { if (e.ctrlKey) e.preventDefault(); return; }
   if (e.ctrlKey) {
     e.preventDefault();
     const factor = Math.exp(-e.deltaY * 0.01);
@@ -691,11 +1061,13 @@ let gestureBaseScale = 1;
 document.addEventListener('gesturestart', (e) => {
   if (currentView !== 'site') return;
   e.preventDefault();
+  if (isExplOpen()) return;
   gestureBaseScale = scale;
 });
 document.addEventListener('gesturechange', (e) => {
   if (currentView !== 'site') return;
   e.preventDefault();
+  if (isExplOpen()) return;
   zoomAt(e.clientX, e.clientY, gestureBaseScale * e.scale);
 });
 document.addEventListener('gestureend', (e) => { if (currentView === 'site') e.preventDefault(); });
@@ -753,6 +1125,26 @@ CONFIG.forEach((entry) => {
       return img;
     });
 
+    // one group of clickable number circles per image; only the active image's group is shown
+    let hotGroups = [];
+    if (entry.methodLinks) {
+      hotGroups = entry.methodLinks.map((list, i) => {
+        const g = document.createElement('div');
+        g.className = 'method-hots' + (i === 0 ? ' active' : '');
+        list.forEach(([n, px, py]) => {
+          const h = document.createElement('div');
+          h.className = 'method-hot' + (SHOW_METHOD_HOTS ? ' debug' : '');
+          h.style.left = px + '%';
+          h.style.top = py + '%';
+          h.style.width = METHOD_HOT_SIZE + '%';
+          h.dataset.method = n;
+          g.appendChild(h);
+        });
+        frame.appendChild(g);
+        return g;
+      });
+    }
+
     let playBtn = null, pointEls = [], timeline = null;
     let navPrev = null, navNext = null, counterEl = null;
 
@@ -807,6 +1199,14 @@ CONFIG.forEach((entry) => {
       inner.appendChild(controls);
     }
 
+    if (entry.biotopeLegend) {
+      const bl = document.createElement('div');
+      bl.className = 'plan-legend';
+      bl.innerHTML = '<button class="legend-toggle bio-legend-btn" type="button">'
+        + '<svg viewBox="0 0 24 24"><path d="M7 17L17 7M9 7h8v8"/></svg><span>Legend</span></button>';
+      frame.appendChild(bl);
+    }
+
     let financeImg = null, financeBtn = null;
     if (entry.finance) {
       financeImg = document.createElement('img');
@@ -825,7 +1225,7 @@ CONFIG.forEach((entry) => {
       imgEls, tickEls: pointEls, dateEls: timeline ? timeline.querySelectorAll('.seq-date') : [],
       playBtn, idx: 0, playing: false, timer: null,
       financeImg, financeBtn, financeActive: false,
-      navPrev, navNext, counterEl
+      navPrev, navNext, counterEl, hotGroups
     });
 
   } else if (entry.type === 'layered') {
@@ -867,8 +1267,10 @@ CONFIG.forEach((entry) => {
     legendToggle.addEventListener('click', () => {
       if (legendWrap.classList.contains('pinned')) {
         legendWrap.classList.toggle('open');
+        applyTransform(); // closing it un-pins it back into the map
       }
     });
+    item._legendWrap = legendWrap; // stays reachable while pinned outside the tile
 
     let firstAssigned = false;
 
@@ -948,6 +1350,13 @@ CONFIG.forEach((entry) => {
     inner.appendChild(frame);
   }
 
+  // which round button belongs to this tile (shown while zoomed in on it)
+  item._relevantBtn = entry.methodLinks ? 'methods-btn'
+                    : entry.biotopeLegend ? 'biotope-btn'
+                    : null;
+
+  item._hint = entry.hint || null;
+
   canvas.appendChild(item);
 });
 
@@ -960,6 +1369,7 @@ function seqSetActive(state, idx) {
     if (state.financeBtn) state.financeBtn.classList.remove('active');
   }
   state.imgEls.forEach((im, k) => im.classList.toggle('active', k === idx));
+  if (state.hotGroups) state.hotGroups.forEach((g, k) => g.classList.toggle('active', k === idx));
   state.tickEls.forEach((t, k) => t.classList.toggle('active', k === idx));
   state.dateEls.forEach((d, k) => d.classList.toggle('active', k === idx));
   if (state.counterEl) state.counterEl.textContent = (idx + 1) + ' / ' + state.imgEls.length;
@@ -982,6 +1392,7 @@ function financeToggle(state) {
   if (state.financeActive) {
     seqStop(state);
     state.imgEls.forEach((im) => im.classList.remove('active'));
+    if (state.hotGroups) state.hotGroups.forEach((g) => g.classList.remove('active'));
     state.financeImg.classList.add('active');
     state.financeBtn.classList.add('active');
   } else {
@@ -1004,7 +1415,7 @@ function mapSelect(item, chosenEl) {
   // swap this tile's legend to match the newly active layer/sub-cell
   // (a sub-grid cell can have its own legend; falls back to the parent
   // layer's legend if the cell doesn't define one)
-  const legendWrap = item.querySelector('.map-legend');
+  const legendWrap = item._legendWrap;
   if (legendWrap && parentTab) {
     const legendSrc = (chosenEl._legend != null) ? chosenEl._legend : parentTab._legend;
     if (legendSrc) {
@@ -1013,6 +1424,7 @@ function mapSelect(item, chosenEl) {
     } else {
       legendWrap.classList.add('no-legend');
       legendWrap.classList.remove('open');
+      applyTransform();
     }
   }
 }
@@ -1027,15 +1439,101 @@ let lastSingle = null;
 
 const LEGEND_PIN_THRESHOLD = 1; // zoom level past which legends detach and pin to the screen
 
+// ---- round buttons: only show what's relevant for the tile in view ----
+// In the overview all buttons are visible. Once zoomed in, the tile that
+// takes up most of the screen decides: Methods only for the program (axo)
+// tiles, Biotope only for the development (plan) tiles, Explanation never,
+// Reset always.
+const ZOOMED_IN_FACTOR = 2.3; // "zoomed in" = more than 1.3× the overview zoom
+let overviewScale = 1;
+const ROUND_BTN_IDS = ['methods-btn', 'biotope-btn', 'explanation-btn'];
+
+function updateRoundButtons() {
+  const zoomedIn = scale > overviewScale * ZOOMED_IN_FACTOR;
+  let relevant = null;
+  if (zoomedIn) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let bestArea = 0;
+    canvas.querySelectorAll('.item').forEach((it) => {
+      const l = it.offsetLeft * scale + tx, t = it.offsetTop * scale + ty;
+      const r = l + it.offsetWidth * scale, b = t + it.offsetHeight * scale;
+      const area = Math.max(0, Math.min(r, vw) - Math.max(l, 0)) * Math.max(0, Math.min(b, vh) - Math.max(t, 0));
+      if (area > bestArea) { bestArea = area; relevant = it._relevantBtn; }
+    });
+  }
+  ROUND_BTN_IDS.forEach((id) => {
+    const show = !zoomedIn || id === relevant;
+    document.getElementById(id).classList.toggle('btn-hidden', !show);
+  });
+}
+
+// ---- XP-style tooltip: in the overview, hovering a tile shows what's
+// in it. Mouse only (a touchscreen has no hover), off once zoomed in.
+const TOOLTIP_DELAY = 400;            // ms before it appears
+const TOOLTIP_OFFSET_X = 14, TOOLTIP_OFFSET_Y = 22; // below-right of the cursor, like XP
+const tooltipEl = document.getElementById('tooltip');
+let tooltipItem = null, tooltipTimer = null, tooltipX = 0, tooltipY = 0;
+
+function hideTooltip() {
+  clearTimeout(tooltipTimer);
+  tooltipTimer = null;
+  tooltipItem = null;
+  tooltipEl.classList.remove('show');
+}
+function placeTooltip() {
+  const w = tooltipEl.offsetWidth, h = tooltipEl.offsetHeight;
+  let x = tooltipX + TOOLTIP_OFFSET_X, y = tooltipY + TOOLTIP_OFFSET_Y;
+  if (x + w > window.innerWidth - 8) x = tooltipX - w - 6;   // flip left at the right edge
+  if (y + h > window.innerHeight - 8) y = tooltipY - h - 8;  // flip up at the bottom edge
+  tooltipEl.style.left = x + 'px';
+  tooltipEl.style.top = y + 'px';
+}
+function tooltipAllowed() {
+  return currentView === 'site' && !isExplOpen() && pointers.size === 0
+    && scale <= overviewScale * ZOOMED_IN_FACTOR;
+}
+stage.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  tooltipX = e.clientX; tooltipY = e.clientY;
+  if (!tooltipAllowed()) { hideTooltip(); return; }
+  const hit = document.elementFromPoint(e.clientX, e.clientY);
+  const item = hit ? hit.closest('.item') : null;
+  if (!item || !item._hint) { hideTooltip(); return; }
+  if (item !== tooltipItem) {
+    hideTooltip();
+    tooltipItem = item;
+    tooltipTimer = setTimeout(() => {
+      const h = item._hint;
+      tooltipEl.innerHTML = '';
+      [['What', h.what], ['Tip', h.tip]].forEach(([k, v]) => {
+        if (!v) return;
+        const line = document.createElement('div');
+        line.textContent = k + ': ' + v;
+        tooltipEl.appendChild(line);
+      });
+      tooltipEl.classList.add('show');
+      placeTooltip();
+    }, TOOLTIP_DELAY);
+  } else if (tooltipEl.classList.contains('show')) {
+    placeTooltip();
+  }
+});
+stage.addEventListener('pointerleave', hideTooltip);
+stage.addEventListener('pointerdown', hideTooltip);
+stage.addEventListener('wheel', hideTooltip, { passive: true });
+
 function applyTransform() {
   canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  updateRoundButtons();
   // Map legends: below the threshold they're normal canvas content (scale
   // with everything else, so they don't balloon in size when zoomed out).
   // Past the threshold, detach them from the canvas and pin them to a
   // fixed screen position — exactly like the Reset button — so they stay
   // put and readable while you explore details deeper inside the map.
-  const shouldPin = scale > LEGEND_PIN_THRESHOLD;
+  // Only an OPEN legend pins — a closed one has nothing to keep readable,
+  // so its button just stays in the map like normal content.
   document.querySelectorAll('.map-legend').forEach((el) => {
+    const shouldPin = scale > LEGEND_PIN_THRESHOLD && el.classList.contains('open');
     const isPinned = el.classList.contains('pinned');
     if (shouldPin && !isPinned) {
       el.classList.add('pinned');
@@ -1065,6 +1563,7 @@ function zoomToItem(item, padding = 60) {
 function centerCanvas() {
   const vw = window.innerWidth, vh = window.innerHeight;
   const fitScale = Math.min(vw / CANVAS_W, vh / CANVAS_H);
+  overviewScale = fitScale;
   scale = Math.max(MIN_SCALE, Math.min(fitScale, MAX_SCALE));
   tx = (vw - CANVAS_W * scale) / 2;
   ty = (vh - CANVAS_H * scale) / 2;
@@ -1144,6 +1643,8 @@ function handlePointerUp(e) {
   let hitInteractive = false;
 
   if (target) {
+    const bioLegendEl = target.closest('.bio-legend-btn');
+    const methodHotEl = target.closest('.method-hot');
     const cellEl = target.closest('.layer-subgrid-cell');
     const tabEl = !cellEl ? target.closest('.layer-tab') : null;
     const legendToggleEl = target.closest('.legend-toggle');
@@ -1154,7 +1655,13 @@ function handlePointerUp(e) {
     const navPrevEl = !tickEl && !playBtnEl && !financeBtnEl ? target.closest('.nav-prev') : null;
     const navNextEl = !navPrevEl && !tickEl && !playBtnEl && !financeBtnEl ? target.closest('.nav-next') : null;
 
-    if (cellEl) {
+    if (methodHotEl) {
+      hitInteractive = true;
+      showMethod(Number(methodHotEl.dataset.method));
+    } else if (bioLegendEl) {
+      hitInteractive = true;
+      showBiotopeView();
+    } else if (cellEl) {
       hitInteractive = true;
       mapSelect(cellEl.closest('.item'), cellEl);
     } else if (tabEl) {
@@ -1163,6 +1670,7 @@ function handlePointerUp(e) {
     } else if (legendToggleEl) {
       hitInteractive = true;
       legendToggleEl.closest('.map-legend').classList.toggle('open');
+      applyTransform(); // opening it while zoomed in pins it to the screen
     } else if (financeBtnEl) {
       hitInteractive = true;
       const item = financeBtnEl.closest('.item');
@@ -1215,164 +1723,399 @@ window.addEventListener('resize', centerCanvas);
 centerCanvas();
 
 // ============================================================
-// Methods + Biotopes view: a separate full-screen view (not a
-// different page) showing one wide document image, swipeable
-// left/right and zoomable to read the small labels.
+// Full-screen document views (same page, not separate pages):
+// "Methods" and "Biotope" legend. Each shows one wide image on the
+// parallax grid, pannable/zoomable, with section jump-buttons at the
+// bottom. Both are built by makeDocView() below.
 // ============================================================
 const siteView = document.getElementById('site-view');
-const methodsView = document.getElementById('methods-view');
-const methodsStage = document.getElementById('methods-stage');
-const docWrap = document.getElementById('doc-wrap');
-const docImg = document.getElementById('doc-img');
 
-const DOC_W = 8000, DOC_H = 1208; // native pixel size of methods.jpg
-docImg.style.width = DOC_W + 'px';
-docImg.style.height = DOC_H + 'px';
-
-let docScale = 1, docTx = 0, docTy = 0;
-let docFitScale = 1;
 const DOC_MAX_SCALE_FACTOR = 6;
+const BG_PARALLAX = 0.55; // background grid moves slower than the image (< 1 = slower)
 
-function applyDocTransform() {
-  docWrap.style.transform = `translate(${docTx}px, ${docTy}px) scale(${docScale})`;
-}
+function makeDocView(cfg) {
+  const view = document.getElementById(cfg.viewId);
+  const stageEl = view.querySelector('.doc-stage');
+  const wrap = view.querySelector('.doc-wrap');
+  const bg = view.querySelector('.doc-bg');
+  const img = view.querySelector('.doc-img');
+  const btns = Array.from(view.querySelectorAll('.section-btn'));
+  const v = { name: cfg.name, view, W: cfg.W, H: cfg.H, scale: 1, tx: 0, ty: 0, fit: 1 };
 
-function docMinScale() { return docFitScale; }
-function docMaxScale() { return docFitScale * DOC_MAX_SCALE_FACTOR; }
+  function sizeImg() { img.style.width = v.W + 'px'; img.style.height = v.H + 'px'; }
+  sizeImg();
+  // optional: take the real pixel size from the image file once loaded
+  if (cfg.sizeFromImage) {
+    const take = () => {
+      if (!img.naturalWidth) return;
+      v.W = img.naturalWidth; v.H = img.naturalHeight;
+      sizeImg();
+      if (currentView === v.name) center();
+    };
+    if (img.complete) take();
+    img.addEventListener('load', take);
+  }
 
-function clampDocPan() {
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const docW = DOC_W * docScale, docH = DOC_H * docScale;
-  docTx = docW <= vw ? (vw - docW) / 2 : Math.min(0, Math.max(vw - docW, docTx));
-  docTy = docH <= vh ? (vh - docH) / 2 : Math.min(0, Math.max(vh - docH, docTy));
-}
+  // section position: data-x = center in document pixels (Methods);
+  // data-from / data-to = section's horizontal range as share of the
+  // image width (Biotope) — jumping there zooms in so the section fills the screen
+  const hasRange = (b) => b.dataset.from != null;
+  function secX(b) {
+    return hasRange(b) ? (Number(b.dataset.from) + Number(b.dataset.to)) / 2 * v.W : Number(b.dataset.x);
+  }
 
-function centerDoc() {
-  const vw = window.innerWidth, vh = window.innerHeight;
-  docFitScale = vh / DOC_H;
-  docScale = docFitScale;
-  docTx = (vw - DOC_W * docScale) / 2;
-  docTy = 0;
-  clampDocPan();
-  applyDocTransform();
-}
+  function apply() {
+    wrap.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})`;
+    // layered scroll-parallax: the grid only shifts its pattern, at a
+    // fraction of the image's speed, so it reads as sitting further back
+    bg.style.backgroundPosition = `${v.tx * BG_PARALLAX}px ${v.ty * BG_PARALLAX}px`;
+    if (cfg.onTransform) cfg.onTransform(v);
+    // highlight whichever section is centered — updates continuously while panning
+    const cx = (window.innerWidth / 2 - v.tx) / v.scale;
+    let best = null, bestD = Infinity;
+    // range sections: the one with the largest share of itself on screen wins;
+    // point sections (Methods): the one closest to the screen center
+    const visL = -v.tx / v.scale, visR = (window.innerWidth - v.tx) / v.scale;
+    btns.forEach((b) => {
+      let d;
+      if (hasRange(b)) {
+        const L = Number(b.dataset.from) * v.W, R = Number(b.dataset.to) * v.W;
+        d = -(Math.min(visR, R) - Math.max(visL, L)) / (R - L);
+      } else {
+        d = Math.abs(secX(b) - cx);
+      }
+      if (d < bestD) { bestD = d; best = b; }
+    });
+    btns.forEach((b) => b.classList.toggle('active', b === best));
+  }
 
-function zoomDocAt(clientX, clientY, newScaleRaw) {
-  const newScale = Math.max(docMinScale(), Math.min(newScaleRaw, docMaxScale()));
-  const rect = methodsStage.getBoundingClientRect();
-  const mx = clientX - rect.left, my = clientY - rect.top;
-  const dx = (mx - docTx) / docScale, dy = (my - docTy) / docScale;
-  docTx = mx - dx * newScale;
-  docTy = my - dy * newScale;
-  docScale = newScale;
-  clampDocPan();
-  applyDocTransform();
-}
+  function clamp() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w = v.W * v.scale, h = v.H * v.scale;
+    v.tx = w <= vw ? (vw - w) / 2 : Math.min(0, Math.max(vw - w, v.tx));
+    v.ty = h <= vh ? (vh - h) / 2 : Math.min(0, Math.max(vh - h, v.ty));
+  }
 
-methodsStage.addEventListener('wheel', (e) => {
-  if (e.ctrlKey) {
+  function center() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    v.fit = cfg.fitScale(vw, vh, v.W, v.H);
+    v.scale = v.fit;
+    v.tx = (vw - v.W * v.scale) / 2;
+    v.ty = 0;
+    clamp();
+    apply();
+  }
+
+  function zoomAt(clientX, clientY, raw) {
+    const s = Math.max(v.fit, Math.min(raw, v.fit * DOC_MAX_SCALE_FACTOR));
+    const rect = stageEl.getBoundingClientRect();
+    const mx = clientX - rect.left, my = clientY - rect.top;
+    const dx = (mx - v.tx) / v.scale, dy = (my - v.ty) / v.scale;
+    v.tx = mx - dx * s;
+    v.ty = my - dy * s;
+    v.scale = s;
+    clamp();
+    apply();
+  }
+
+  stageEl.addEventListener('wheel', (e) => {
     e.preventDefault();
-    zoomDocAt(e.clientX, e.clientY, docScale * Math.exp(-e.deltaY * 0.01));
-  } else {
-    // plain trackpad/scroll swipe also pans, so a two-finger swipe
-    // moves left/right through the document without needing pinch
-    e.preventDefault();
-    docTx -= e.deltaX;
-    docTy -= e.deltaY;
-    clampDocPan();
-    applyDocTransform();
-  }
-}, { passive: false });
+    if (e.ctrlKey) {
+      zoomAt(e.clientX, e.clientY, v.scale * Math.exp(-e.deltaY * 0.01));
+    } else {
+      // plain trackpad swipe pans, so a two-finger swipe moves through the document
+      v.tx -= e.deltaX;
+      v.ty -= e.deltaY;
+      clamp();
+      apply();
+    }
+  }, { passive: false });
 
-let docGestureBaseScale = 1;
-methodsStage.addEventListener('gesturestart', (e) => { e.preventDefault(); docGestureBaseScale = docScale; });
-methodsStage.addEventListener('gesturechange', (e) => {
-  e.preventDefault();
-  zoomDocAt(e.clientX, e.clientY, docGestureBaseScale * e.scale);
-});
-methodsStage.addEventListener('gestureend', (e) => e.preventDefault());
+  let gestureBase = 1;
+  stageEl.addEventListener('gesturestart', (e) => { e.preventDefault(); gestureBase = v.scale; });
+  stageEl.addEventListener('gesturechange', (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, gestureBase * e.scale); });
+  stageEl.addEventListener('gestureend', (e) => e.preventDefault());
 
-const docPointers = new Map();
-let docLastSingle = null, docLastDist = null;
-function docDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
-function docMid(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+  const ptrs = new Map();
+  let lastSingle = null, lastDist = null;
+  const pdist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-methodsStage.addEventListener('pointerdown', (e) => {
-  methodsStage.setPointerCapture(e.pointerId);
-  docPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (docPointers.size === 1) {
-    docLastSingle = { x: e.clientX, y: e.clientY };
-  } else if (docPointers.size === 2) {
-    docLastDist = docDist(...Array.from(docPointers.values()));
-  }
-});
-
-methodsStage.addEventListener('pointermove', (e) => {
-  if (!docPointers.has(e.pointerId)) return;
-  docPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-  if (docPointers.size === 1 && docLastSingle) {
-    docTx += e.clientX - docLastSingle.x;
-    docTy += e.clientY - docLastSingle.y;
-    docLastSingle = { x: e.clientX, y: e.clientY };
-    clampDocPan();
-    applyDocTransform();
-  } else if (docPointers.size === 2) {
-    const pts = Array.from(docPointers.values());
-    const d = docDist(pts[0], pts[1]);
-    const m = docMid(pts[0], pts[1]);
-    if (docLastDist) zoomDocAt(m.x, m.y, docScale * (d / docLastDist));
-    docLastDist = d;
-  }
-});
-
-function endDocPointer(e) {
-  docPointers.delete(e.pointerId);
-  if (docPointers.size < 2) docLastDist = null;
-  docLastSingle = docPointers.size === 1 ? Array.from(docPointers.values())[0] : null;
-}
-methodsStage.addEventListener('pointerup', endDocPointer);
-methodsStage.addEventListener('pointercancel', endDocPointer);
-
-document.getElementById('doc-reset-btn').addEventListener('click', centerDoc);
-
-// ---- jump to a named section (Organizing / Creating / Maintaining / Monitoring) ----
-function jumpToSection(centerX) {
-  const vw = window.innerWidth, vh = window.innerHeight;
-  docScale = docFitScale;
-  docTx = vw / 2 - centerX * docScale;
-  docTy = 0;
-  clampDocPan();
-  applyDocTransform();
-}
-
-document.querySelectorAll('.section-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.section-btn').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    jumpToSection(Number(btn.dataset.x));
+  stageEl.addEventListener('pointerdown', (e) => {
+    stageEl.setPointerCapture(e.pointerId);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 1) lastSingle = { x: e.clientX, y: e.clientY };
+    else if (ptrs.size === 2) lastDist = pdist(...Array.from(ptrs.values()));
   });
-});
+  stageEl.addEventListener('pointermove', (e) => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 1 && lastSingle) {
+      v.tx += e.clientX - lastSingle.x;
+      v.ty += e.clientY - lastSingle.y;
+      lastSingle = { x: e.clientX, y: e.clientY };
+      clamp();
+      apply();
+    } else if (ptrs.size === 2) {
+      const pts = Array.from(ptrs.values());
+      const d = pdist(pts[0], pts[1]);
+      const m = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      if (lastDist) zoomAt(m.x, m.y, v.scale * (d / lastDist));
+      lastDist = d;
+    }
+  });
+  function endPtr(e) {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) lastDist = null;
+    lastSingle = ptrs.size === 1 ? Array.from(ptrs.values())[0] : null;
+  }
+  stageEl.addEventListener('pointerup', endPtr);
+  stageEl.addEventListener('pointercancel', endPtr);
+
+  view.querySelector('.doc-reset').addEventListener('click', center);
+
+  // jump to a named section at the overview zoom level
+  btns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if (hasRange(btn)) {
+        const rangeW = (Number(btn.dataset.to) - Number(btn.dataset.from)) * v.W;
+        v.scale = Math.max(v.fit, Math.min(vw / rangeW, vh / v.H) * 0.92);
+      } else {
+        v.scale = v.fit;
+      }
+      v.tx = vw / 2 - secX(btn) * v.scale;
+      v.ty = 0;
+      clamp();
+      apply();
+    });
+  });
+
+  // zoom in on a document point, centered on screen
+  v.focus = (x, y, zoomFactor) => {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    v.scale = Math.min(v.fit * zoomFactor, v.fit * DOC_MAX_SCALE_FACTOR);
+    v.tx = vw / 2 - x * v.scale;
+    v.ty = vh / 2 - y * v.scale;
+    clamp();
+    apply();
+  };
+  v.center = center;
+  return v;
+}
+
+// ---- "Unavailable" / "Available" scale (Methods view only) ----
+// Behaves exactly like normal canvas content: its Y position AND its own
+// size both scale with the view's zoom/pan, so it visibly grows/shrinks
+// and moves. The only difference: X always stays pinned to the left
+// screen edge, never following horizontal pan. No edge-clamping.
+const METHODS_DOC_H = 1196;
+const SCALE_TOP_DOC_Y = 350;                    // anchor slightly inside the real top edge
+const SCALE_BOTTOM_DOC_Y = METHODS_DOC_H - 450; // anchor slightly inside the real bottom edge
+const scaleAnchorTop = document.getElementById('scale-anchor-top');
+const scaleAnchorBottom = document.getElementById('scale-anchor-bottom');
+const scaleLine = document.getElementById('doc-scale-line');
+
+function positionDocScale(v) {
+  const topY = SCALE_TOP_DOC_Y * v.scale + v.ty;
+  const bottomY = SCALE_BOTTOM_DOC_Y * v.scale + v.ty;
+  scaleAnchorTop.style.top = topY + 'px';
+  scaleAnchorTop.style.transform = `translateY(-50%) scale(${v.scale})`;
+  scaleAnchorBottom.style.top = bottomY + 'px';
+  scaleAnchorBottom.style.transform = `translateY(-50%) scale(${v.scale})`;
+  scaleLine.style.top = topY + 'px';
+  scaleLine.style.height = Math.max(0, bottomY - topY) + 'px';
+}
+
+const docViews = {
+  methods: makeDocView({
+    name: 'methods', viewId: 'methods-view',
+    W: 8000, H: METHODS_DOC_H, // native size of methods-icons.png / grid
+    // noticeably smaller than a full edge-to-edge fit, so icon/text blocks don't overlap in the overview
+    fitScale: (vw, vh, W, H) => (vh / H) * 0.82,
+    onTransform: positionDocScale
+  }),
+  biotope: makeDocView({
+    name: 'biotope', viewId: 'biotope-view',
+    W: 2000, H: 850, sizeFromImage: true, // real size is read from biotope-legende.png
+    fitScale: (vw, vh, W, H) => Math.min(vw / W, vh / H) * 0.9
+  })
+};
 
 // ---- view switching ----
-function showMethodsView() {
-  currentView = 'methods';
+function showDocView(name) {
+  hideTooltip();
+  currentView = name;
   siteView.classList.add('hidden');
-  methodsView.classList.remove('hidden');
-  centerDoc();
+  Object.entries(docViews).forEach(([n, dv]) => dv.view.classList.toggle('hidden', n !== name));
+  docViews[name].center();
 }
 function showSiteView() {
   currentView = 'site';
-  methodsView.classList.add('hidden');
+  Object.values(docViews).forEach((dv) => dv.view.classList.add('hidden'));
   siteView.classList.remove('hidden');
 }
+function showBiotopeView() { showDocView('biotope'); }
 
-document.getElementById('methods-btn').addEventListener('click', showMethodsView);
-document.getElementById('back-btn').addEventListener('click', showSiteView);
+// ---- jump from a numbered circle in an axo to its method ----
+const METHOD_ZOOM = 2.5;                 // zoom relative to the Methods overview
+const METHOD_FOCUS_DX = 90, METHOD_FOCUS_DY = 30; // center slightly right/below the number, on the method block
+function showMethod(n) {
+  showDocView('methods');
+  const p = METHOD_POS[n];
+  if (!p) return;
+  const dv = docViews.methods;
+  dv.focus(p[0] + METHOD_FOCUS_DX, p[1] + METHOD_FOCUS_DY, METHOD_ZOOM);
+}
+
+document.getElementById('methods-btn').addEventListener('click', () => showDocView('methods'));
+document.getElementById('biotope-btn').addEventListener('click', showBiotopeView);
+document.querySelectorAll('.doc-back').forEach((b) => b.addEventListener('click', showSiteView));
 
 window.addEventListener('resize', () => {
-  if (currentView === 'methods') centerDoc();
+  if (docViews[currentView]) docViews[currentView].center();
 });
+
+// ============================================================
+// Intro "explanation" slideshow (intro1.jpg … intro14.jpg)
+// The buttons/arrows are printed in the slide images themselves, so
+// invisible click areas (hotspots) sit on top of them. Values are in
+// % of the slide: x, y = top-left corner, w, h = size.
+// SHOW_HOTSPOTS = true outlines them in red for fine-tuning.
+// ============================================================
+const EXPL_COUNT = 14;
+const EXPL_SRC = (i) => 'intro' + (i + 1) + '.jpg';
+const SHOW_HOTSPOTS = false;
+const EXPL_HOT = {
+  first:  [ { action: 'close', x: 10, y: 79, w: 23, h: 12 },   // "skip to website"
+            { action: 'next',  x: 67, y: 79, w: 31, h: 12 } ], // "project explanation" + arrow
+  middle: [ { action: 'prev',  x: 2,  y: 80, w: 9,  h: 12 },
+            { action: 'next',  x: 89, y: 80, w: 9,  h: 12 } ],
+  last:   [ { action: 'prev',  x: 2,  y: 80, w: 9,  h: 12 },
+            { action: 'close', x: 83, y: 80, w: 16, h: 12 } ]  // "wow, show results!"
+};
+const EXPL_W_MAX = 0.88, EXPL_H_MAX = 0.9; // max share of screen width / height
+const EXPL_TITLE_H = 44;
+
+const explLayer = document.getElementById('expl-layer');
+const explEl = document.getElementById('explanation');
+const explFrame = document.getElementById('expl-frame');
+const explImg = document.getElementById('expl-img');
+let explIdx = 0;
+
+for (let i = 0; i < EXPL_COUNT; i++) { const im = new Image(); im.src = EXPL_SRC(i); } // preload
+
+function explSize() {
+  const ratio = (explImg.naturalWidth && explImg.naturalHeight)
+    ? explImg.naturalWidth / explImg.naturalHeight : 4 / 3;
+  const maxW = window.innerWidth * EXPL_W_MAX;
+  const maxH = window.innerHeight * EXPL_H_MAX - EXPL_TITLE_H;
+  let w = maxW, h = w / ratio;
+  if (h > maxH) { h = maxH; w = h * ratio; }
+  explEl.style.width = Math.round(w) + 'px';
+  explFrame.style.height = Math.round(h) + 'px';
+}
+
+function explShow(i) {
+  explIdx = Math.max(0, Math.min(i, EXPL_COUNT - 1));
+  explImg.src = EXPL_SRC(explIdx);
+  explFrame.querySelectorAll('.expl-hot').forEach((el) => el.remove());
+  const set = explIdx === 0 ? EXPL_HOT.first
+            : explIdx === EXPL_COUNT - 1 ? EXPL_HOT.last
+            : EXPL_HOT.middle;
+  set.forEach((hs) => {
+    const el = document.createElement('div');
+    el.className = 'expl-hot' + (SHOW_HOTSPOTS ? ' debug' : '');
+    el.style.left = hs.x + '%';  el.style.top = hs.y + '%';
+    el.style.width = hs.w + '%'; el.style.height = hs.h + '%';
+    el.addEventListener('click', () => explAction(hs.action));
+    explFrame.appendChild(el);
+  });
+}
+
+function explAction(a) {
+  if (a === 'next') explShow(explIdx + 1);
+  else if (a === 'prev') explShow(explIdx - 1);
+  else explClose();
+}
+function explClose() { explLayer.classList.add('hidden'); }
+function explOpen() {
+  hideTooltip();
+  explLayer.classList.remove('hidden');
+  explShow(0);
+  explSize();
+}
+function isExplOpen() { return !explLayer.classList.contains('hidden'); }
+
+explImg.addEventListener('load', explSize);
+explEl.querySelector('.expl-close').addEventListener('click', explClose);
+window.addEventListener('resize', () => { if (isExplOpen()) explSize(); });
+document.getElementById('explanation-btn').addEventListener('click', explOpen);
+document.addEventListener('keydown', (e) => {
+  if (!isExplOpen()) return;
+  if (e.key === 'ArrowRight' && explIdx < EXPL_COUNT - 1) explShow(explIdx + 1);
+  else if (e.key === 'ArrowLeft' && explIdx > 0) explShow(explIdx - 1);
+  else if (e.key === 'Escape') explClose();
+});
+explSize();
+explShow(0);
+
+// ============================================================
+// Round buttons: curve the label along the lower arc of the circle, so
+// it sits further from the rim. Takes the text from each button's <span>.
+// ============================================================
+const BTN_ARC_RADIUS = 28;   // baseline radius in px (button radius is 32) — smaller = further from the rim
+const BTN_ARC_MAX = 0.95;    // a label may cover at most this share of the half circle; longer ones get a smaller font
+const BTN_ICON_SHIFT = -4;   // moves the icon up a little to make room for the label
+(function curveButtonLabels() {
+  const NS = 'http://www.w3.org/2000/svg';
+  document.querySelectorAll('.reset-btn').forEach((btn, i) => {
+    const span = btn.querySelector('span');
+    if (!span) return;
+    const label = span.textContent.trim();
+    if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', label);
+    const icon = btn.querySelector('svg');
+    if (icon) icon.style.transform = `translateY(${BTN_ICON_SHIFT}px)`;
+
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'btn-arc');
+    svg.setAttribute('viewBox', '0 0 64 64');
+    const r = BTN_ARC_RADIUS;
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('id', 'btn-arc-' + i);
+    path.setAttribute('d', `M ${32 - r} 32 A ${r} ${r} 0 0 0 ${32 + r} 32`); // left → bottom → right
+    path.setAttribute('fill', 'none');
+    const text = document.createElementNS(NS, 'text');
+    text.setAttribute('text-anchor', 'middle');
+    const tp = document.createElementNS(NS, 'textPath');
+    tp.setAttribute('href', '#btn-arc-' + i);
+    tp.setAttribute('startOffset', '50%');
+    tp.textContent = label.toUpperCase();
+    text.appendChild(tp);
+    svg.appendChild(path);
+    svg.appendChild(text);
+    span.replaceWith(svg);
+    btn._arcText = text;
+  });
+
+  // shrink long labels (e.g. EXPLANATION) so they don't wrap too far around.
+  // Measured once the button is visible (hidden views measure 0).
+  function fitLabels() {
+    const maxLen = Math.PI * BTN_ARC_RADIUS * BTN_ARC_MAX;
+    document.querySelectorAll('.reset-btn').forEach((btn) => {
+      const t = btn._arcText;
+      if (!t || t._fitted) return;
+      const len = t.getComputedTextLength();
+      if (!len) return;
+      if (len > maxLen) {
+        const fs = parseFloat(getComputedStyle(t).fontSize);
+        t.style.fontSize = (fs * maxLen / len).toFixed(2) + 'px';
+      }
+      t._fitted = true;
+    });
+  }
+  fitLabels();
+  document.addEventListener('click', () => requestAnimationFrame(fitLabels)); // after switching views
+})();
 </script>
 </body>
 </html>
